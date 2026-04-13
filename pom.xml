@@ -14,7 +14,7 @@
     <artifactId>wls-agents</artifactId>
     <version>1.0.0-SNAPSHOT</version>
 
-    <name>Helidon Agentic Assistant</name>
+    <name>WebLogic Agentic Assistant</name>
 
     <properties>
         <mainClass>com.example.wls.agentic.Server</mainClass>
