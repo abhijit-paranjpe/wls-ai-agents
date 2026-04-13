@@ -1,0 +1,46 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  features:
+    static-content:
+      classpath:
+        - context: "/"
+          location: "/WEB"
+          welcome: "index.html"
+
+declarative:
+  ignore-incubating: true
+
+langchain4j:
+  providers:
+    oci-gen-ai:
+      base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
+      compartment-id: "ocid1.compartment.oc1..aaaaaaaalb6or3fft6ch4qx6epz2se2wbghc5f2odxchp7x6qvy6umvx2taq"
+      region: "us-ashburn-1"
+      model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyag3w2xk76vlahjujj2gdfeuzhflt25gbo3bxidlsqfjla
+
+    open-ai:
+      api-key: /Users/aparanja/.oci/oci_api_key.pem
+      base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
+      log-requests: false
+      log-responses: false
+
+  models:
+    wls-shared-model:
+      provider: oci-gen-ai
+
+  mcp-clients:
+    wls-tools-mcp-server:
+      uri: http://0.0.0.0:9001/wlsmcp
+
+
+helidon.oci:
+  authentication-method: "config"
+  authentication:
+    config:
+      region: us-ashburn-1
+      fingerprint: "9a:09:f7:13:59:4c:ef:7a:53:52:d6:3d:0e:7a:36:99"
+      tenant-id: "ocid1.tenancy.oc1..aaaaaaaa7uw5cvrk54xplbcfz6t7gxqgssmdawwqfnourl4ms7qpwt4z3kla"
+      user-id: "ocid1.user.oc1..aaaaaaaa7btnm4iau2sce7kzynkcpfjumnql23u6xta7tqwhm7whipm3vtxq"
+      private-key:
+        path: /Users/aparanja/.oci/oci_api_key.pem
