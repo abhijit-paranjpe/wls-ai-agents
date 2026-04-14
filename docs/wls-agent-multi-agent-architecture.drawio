@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="wls-agent-arch-v2" name="WebLogic Multi-Agent Architecture">
-        <mxGraphModel dx="1358" dy="1003" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1300" math="0" shadow="0">
+        <mxGraphModel dx="1840" dy="1003" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1300" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -20,7 +20,7 @@
                     <mxGeometry x="720" y="140" width="1200" height="470" as="geometry"/>
                 </mxCell>
                 <mxCell id="21" value="RequestClassifierAgent&#xa;@Agent outputKey: intent&#xa;Classifies: DomainView | Patching | SR" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=14;" parent="20" vertex="1">
-                    <mxGeometry x="40" y="80" width="320" height="130" as="geometry"/>
+                    <mxGeometry x="40" y="73" width="320" height="130" as="geometry"/>
                 </mxCell>
                 <mxCell id="22" value="RequestRouterAgent&#xa;@ConditionalAgent&#xa;@ActivationCondition per specialist" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=14;" parent="20" vertex="1">
                     <mxGeometry x="410" y="80" width="320" height="130" as="geometry"/>
@@ -34,10 +34,10 @@
                 <mxCell id="25" value="&lt;b&gt;PatchingAgent&lt;/b&gt;&lt;br&gt;@Agent outputKey: lastResponse&lt;br&gt;Patch advisory / plan / execution guidance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
                     <mxGeometry x="620" y="324" width="220" height="66" as="geometry"/>
                 </mxCell>
-                <mxCell id="26" value="DiagnosticAgent&lt;br&gt;@Agent outputKey: lastResponse&lt;br&gt;Service Request triage / diagnostics / next steps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
+                <mxCell id="26" value="&lt;b&gt;DiagnosticAgent&lt;/b&gt;&lt;br&gt;@Agent outputKey: lastResponse&lt;br&gt;Service Request triage / diagnostics / next steps" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
                     <mxGeometry x="868" y="324" width="202" height="76" as="geometry"/>
                 </mxCell>
-                <mxCell id="105" value="&amp;nbsp;Diagnostic" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;entryX=0.25;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="20" source="22" target="26" edge="1">
+                <mxCell id="105" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;entryX=0.25;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="20" source="22" target="26" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="660" y="260" as="sourcePoint"/>
                         <mxPoint x="1010" y="310" as="targetPoint"/>
@@ -53,13 +53,13 @@
                         <mxPoint x="800" y="140" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="u2SSQJJGbadAuLvg_hNj-136" value="3)Summary" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="u2SSQJJGbadAuLvg_hNj-135" vertex="1" connectable="0">
+                <mxCell id="u2SSQJJGbadAuLvg_hNj-136" value="Summary" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="u2SSQJJGbadAuLvg_hNj-135" vertex="1" connectable="0">
                     <mxGeometry x="-0.0333" y="-1" relative="1" as="geometry">
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="132" value="&lt;b&gt;AppManagementAgent&lt;/b&gt;&lt;br&gt;&lt;div&gt;@Agent outputKey: lastResponse&lt;br&gt;List/Deploy/Undeploy/Status&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" vertex="1" parent="20">
-                    <mxGeometry x="387.5" y="326" width="210" height="70" as="geometry"/>
+                    <mxGeometry x="384.5" y="325" width="210" height="70" as="geometry"/>
                 </mxCell>
                 <mxCell id="104" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="20" source="22" target="132" edge="1">
                     <mxGeometry relative="1" as="geometry">
@@ -71,11 +71,8 @@
                         <mxPoint x="480" y="310" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="138" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="20">
-                    <mxGeometry x="250" y="265" width="60" height="30" as="geometry"/>
-                </mxCell>
                 <mxCell id="140" value="AppManagement" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="20">
-                    <mxGeometry x="450" y="290" width="85" height="30" as="geometry"/>
+                    <mxGeometry x="450" y="280" width="85" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="103" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="20" source="22" target="24" edge="1">
                     <mxGeometry x="0.0029" relative="1" as="geometry">
@@ -95,16 +92,7 @@
                 </mxCell>
                 <mxCell id="139" value="&amp;nbsp;DomainRuntime" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="103">
                     <mxGeometry x="0.7692" y="1" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
-                    </mxGeometry>
-                </mxCell>
-                <mxCell id="122" value="model binding" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;" parent="20" target="23" edge="1">
-                    <mxGeometry relative="1" as="geometry">
-                        <Array as="points">
-                            <mxPoint x="1085" y="700"/>
-                        </Array>
-                        <mxPoint x="-140" y="700" as="sourcePoint"/>
-                        <mxPoint x="1140" y="320" as="targetPoint"/>
+                        <mxPoint y="17" as="offset"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="133" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="20" source="22" target="25">
@@ -119,10 +107,13 @@
                 </mxCell>
                 <mxCell id="141" value="Patching" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="133">
                     <mxGeometry x="0.6364" y="-3" relative="1" as="geometry">
-                        <mxPoint as="offset"/>
+                        <mxPoint y="11" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="40" value="Shared LLM Model (POC)&#xa;@Ai.ChatModel(&quot;wls-shared-model&quot;)&#xa;for all agents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                <mxCell id="150" value="Diagnostics" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="20">
+                    <mxGeometry x="890" y="280" width="70" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="40" value="Shared LLM Model&amp;nbsp;&lt;br&gt;@Ai.ChatModel(&quot;wls-shared-model&quot;)&lt;br&gt;for all agents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
                     <mxGeometry x="218" y="710" width="290" height="100" as="geometry"/>
                 </mxCell>
                 <mxCell id="41" value="MCP Server(s) as Tool Layer&#xa;@Ai.McpClients(&quot;wls-tools-mcp-server&quot;)&#xa;(instead of local @Ai.Tools)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
@@ -134,10 +125,10 @@
                 <mxCell id="101" value="question + previousSummary" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="11" target="21" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="102" value="1) intent (outputKey)" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="21" target="22" edge="1">
+                <mxCell id="102" value="&amp;nbsp;intent (outputKey)" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="21" target="22" edge="1">
                     <mxGeometry relative="1" as="geometry"/>
                 </mxCell>
-                <mxCell id="110" value="response" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" edge="1">
+                <mxCell id="110" value="response" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" target="11" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
                             <mxPoint x="1980" y="285"/>
@@ -145,7 +136,7 @@
                             <mxPoint x="470" y="110"/>
                         </Array>
                         <mxPoint x="1900" y="285" as="sourcePoint"/>
-                        <mxPoint x="470" y="262" as="targetPoint"/>
+                        <mxPoint x="470" y="230" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
                 <mxCell id="123" value="model binding" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;exitX=1;exitY=0.25;exitDx=0;exitDy=0;entryX=0.25;entryY=1;entryDx=0;entryDy=0;" parent="1" source="40" target="24" edge="1">
@@ -207,16 +198,16 @@
                     <mxGeometry x="925" y="1130" width="770" height="150" as="geometry"/>
                 </mxCell>
                 <mxCell id="143" value="Domain A" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="1000" y="1170" width="120" height="60" as="geometry"/>
+                    <mxGeometry x="1040" y="1180" width="120" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="144" value="Domain B" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
-                    <mxGeometry x="1210" y="1170" width="120" height="60" as="geometry"/>
+                    <mxGeometry x="1240" y="1175" width="120" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="145" value="Domain C" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
                     <mxGeometry x="1430" y="1180" width="120" height="60" as="geometry"/>
                 </mxCell>
                 <mxCell id="146" value="WebLogic Deployments" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=17;" vertex="1" parent="1">
-                    <mxGeometry x="1140" y="1250" width="260" height="30" as="geometry"/>
+                    <mxGeometry x="1180" y="1140" width="260" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="148" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="41" target="142">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
@@ -226,6 +217,25 @@
                 </mxCell>
                 <mxCell id="149" value="Managment Rest&amp;nbsp; Endpoint" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
                     <mxGeometry x="1210" y="1060" width="200" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="122" value="model binding" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" parent="1" source="40" target="23" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="436" y="840"/>
+                            <mxPoint x="1805" y="840"/>
+                        </Array>
+                        <mxPoint x="580" y="840" as="sourcePoint"/>
+                        <mxPoint x="1860" y="460" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="152" value="AppMgmt ops" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="41">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1193" y="530" as="targetPoint"/>
+                        <Array as="points">
+                            <mxPoint x="1193" y="911"/>
+                        </Array>
+                        <mxPoint x="1110" y="940" as="sourcePoint"/>
+                    </mxGeometry>
                 </mxCell>
             </root>
         </mxGraphModel>

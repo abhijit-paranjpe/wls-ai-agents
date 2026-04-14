@@ -15,7 +15,8 @@ public interface FeatureDisabledAgent {
 
             Reply with a short, direct message:
             - state that this capability is currently disabled
-            - ask user/admin to enable the corresponding flag under agent-features in application.yaml
+            - do NOT mention internal implementation details (no config keys, file names, flags, code, or architecture)
+            - ask the user to contact their administrator/support team to enable this capability
             - suggest another supported enabled area (domain runtime, patching, diagnostics, app management)
             """)
     @Agent(value = "Disabled feature responder", outputKey = "lastResponse")

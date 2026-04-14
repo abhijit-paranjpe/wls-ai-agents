@@ -16,7 +16,18 @@ public interface RequestClassifierAgent {
             - DOMAIN_VIEW
             - PATCHING
             - APP_MANAGEMENT
-            - Diagnostic/Troubleshooting
+            - DIAGNOSTIC_TROUBLESHOOTING
+            - GENERAL_ASSISTANCE
+
+            Use GENERAL_ASSISTANCE for greetings, small talk, or broad/non-operational requests
+            that do not clearly map to a specific WebLogic operational workflow.
+
+            DIAGNOSTIC_TROUBLESHOOTING is only for diagnostic analysis and SR-style troubleshooting
+            (evidence gathering, triage, likely root cause, and remediation guidance).
+            Do NOT classify operational actions as DIAGNOSTIC_TROUBLESHOOTING, including:
+            - patching operations
+            - async/background job tracking, PID/job status checks
+            - start/stop/restart/shutdown domain or servers
 
             Reply with only one category token and nothing else.
             User request: '{{question}}'
