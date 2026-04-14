@@ -150,6 +150,62 @@
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
     let summary = '';
+    let taskContext = null;
+    let assistantReady = false;
+
+    function setInputEnabled(enabled) {
+        userInput.disabled = !enabled;
+        sendButton.disabled = !enabled;
+    }
+
+    function normalizeTaskContext(value) {
+        if (!value) return null;
+
+        if (typeof value === 'object' && !Array.isArray(value)) {
+            return value;
+        }
+
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    if (parsed.taskContext && typeof parsed.taskContext === 'object' && !Array.isArray(parsed.taskContext)) {
+                        return parsed.taskContext;
+                    }
+                    return parsed;
+                }
+            } catch (_) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    function mergeTaskContext(previous, incoming) {
+        const prev = normalizeTaskContext(previous) || {};
+        const next = normalizeTaskContext(incoming) || {};
+
+        const merged = { ...prev, ...next };
+
+        // Keep sticky domain/server/host context unless explicitly replaced with a non-empty value.
+        if ((!next.targetDomain || String(next.targetDomain).trim() === '') && prev.targetDomain) {
+            merged.targetDomain = prev.targetDomain;
+        }
+        if ((!next.targetServers || String(next.targetServers).trim() === '') && prev.targetServers) {
+            merged.targetServers = prev.targetServers;
+        }
+        if ((!next.targetHosts || String(next.targetHosts).trim() === '') && prev.targetHosts) {
+            merged.targetHosts = prev.targetHosts;
+        }
+        if ((!next.hostPids || typeof next.hostPids !== 'object' || Array.isArray(next.hostPids)) && prev.hostPids) {
+            merged.hostPids = prev.hostPids;
+        } else if (prev.hostPids && next.hostPids && typeof next.hostPids === 'object' && !Array.isArray(next.hostPids)) {
+            merged.hostPids = { ...prev.hostPids, ...next.hostPids };
+        }
+
+        return Object.keys(merged).length ? merged : null;
+    }
 
     function appendMessage(text, sender) {
         const row = document.createElement('div');
@@ -163,28 +219,66 @@
     }
 
     async function sendMessage() {
+        if (!assistantReady) return;
+
         const text = userInput.value.trim();
-        if (!text) return;
+        if (!text) {
+            await requestAssistantMessage('');
+            return;
+        }
 
         appendMessage(text, 'user');
         userInput.value = '';
 
+        await requestAssistantMessage(text);
+    }
+
+    async function requestAssistantMessage(text) {
         try {
+            const payload = {
+                message: text,
+                summary: typeof summary === 'string' ? summary : ''
+            };
+
+            const normalizedTaskContext = mergeTaskContext(taskContext, taskContext);
+            if (normalizedTaskContext) {
+                payload.taskContext = normalizedTaskContext;
+            }
+
             const response = await fetch('/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, summary })
+                body: JSON.stringify(payload)
             });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+
             const data = await response.json();
-            summary = data.summary;
+            summary = typeof data.summary === 'string' ? data.summary : summary;
+            taskContext = mergeTaskContext(taskContext, data.taskContext);
             appendMessage(data.message || '_[No response]_ 🤖', 'assistant');
+
+            if (!assistantReady && text === '') {
+                assistantReady = true;
+                setInputEnabled(true);
+            }
         } catch (_) {
             appendMessage('_[Error contacting assistant]_ ❌', 'assistant');
+
+            if (!assistantReady && text === '') {
+                assistantReady = true;
+                setInputEnabled(true);
+            }
         }
     }
 
     sendButton.addEventListener('click', sendMessage);
     userInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+
+    setInputEnabled(false);
+    requestAssistantMessage('');
 </script>
 </body>
 </html>

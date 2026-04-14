@@ -1,6 +1,7 @@
 package com.example.wls.agentic.ai;
 
 import com.example.wls.agentic.dto.AgentResponse;
+import com.example.wls.agentic.dto.TaskContext;
 import io.helidon.integrations.langchain4j.Ai;
 
 import dev.langchain4j.agentic.declarative.Output;
@@ -23,12 +24,26 @@ public interface WebLogicAgent {
 
             Use the following conversation summary to keep context and maintain continuity:
             {{previousSummary}}
+
+            Use this structured task context to tailor responses and decisions:
+            {{taskContext}}
+
+            Reuse targetDomain from task context when the user asks follow-up operations without explicitly naming a domain.
+            If confirmTargetOnImplicitReuse is true, explicitly confirm the inferred domain before risky operations.
             """)
-    AgentResponse chat(@V("question") String question, @V("previousSummary") String previousSummary);
+    AgentResponse chat(@V("question") String question,
+                       @V("previousSummary") String previousSummary,
+                       @V("taskContext") String taskContext,
+                       @V("taskContextObject") TaskContext taskContextObject);
 
     @Output
     static AgentResponse createResponse(@V("lastResponse") String lastResponse,
-                                        @V("nextSummary") String nextSummary) {
-        return new AgentResponse(lastResponse, nextSummary);
+                                        @V("nextSummary") String nextSummary,
+                                        @V("taskContextObject") TaskContext taskContextObject) {
+        TaskContext finalContext = taskContextObject == null
+                ? TaskContext.empty().withMemorySummary(nextSummary)
+                : taskContextObject.withMemorySummary(nextSummary);
+
+        return new AgentResponse(lastResponse, nextSummary, finalContext);
     }
 }
