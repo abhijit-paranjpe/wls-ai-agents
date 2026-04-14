@@ -11,6 +11,16 @@ server:
 declarative:
   ignore-incubating: true
 
+agent-features:
+  domain-runtime:
+    enabled: true
+  patching:
+    enabled: true
+  diagnostic:
+    enabled: false
+  app-management:
+    enabled: true
+
 langchain4j:
   providers:
     oci-gen-ai:
@@ -18,12 +28,11 @@ langchain4j:
       compartment-id: "ocid1.compartment.oc1..aaaaaaaalb6or3fft6ch4qx6epz2se2wbghc5f2odxchp7x6qvy6umvx2taq"
       region: "us-ashburn-1"
       model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyag3w2xk76vlahjujj2gdfeuzhflt25gbo3bxidlsqfjla
-
-    open-ai:
-      api-key: /Users/aparanja/.oci/oci_api_key.pem
-      base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
-      log-requests: false
-      log-responses: false
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyargceyuaysrjzo2metq2rinavayxqmpu7tkm6mmfojcvq
+      #meta.llama-4-scout-17b-16e-instruct
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaw23hfc7mtvv5wef3gwvvaguyzqmhb5lx4r5s3y2xzc4a
+      #mode - xai.grok-4.20-reasoning
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyasuv7iwnlwaakofq7z3ftxewtgqknsntnxqeopehvitdq
 
   models:
     wls-shared-model:

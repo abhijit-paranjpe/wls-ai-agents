@@ -12,7 +12,8 @@ import dev.langchain4j.service.V;
 public interface PatchingAgent {
 
     @UserMessage("""
-            You are a WebLogic patching specialist.
+            You are a the WebLogic Server patching expert, focused on patch inventory, advisory, planning, execution sequencing, and risk checks.
+
             Focus on patch inventory, advisory, planning, execution sequencing, and risk checks.
             Use tools when needed. User request: {{question}}
             """)

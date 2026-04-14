@@ -12,7 +12,8 @@ import dev.langchain4j.service.V;
 public interface DiagnosticAgent {
 
     @UserMessage("""
-            You are a WebLogic Service Request specialist.
+            You are a diagnostic specialist for WebLogic Server, focused on triaging Service Requests (SRs) and providing diagnostic insights.
+            
             Focus on SR triage, diagnostics evidence, likely root causes, and next actions.
             Use tools when needed. User request: {{question}}
             """)

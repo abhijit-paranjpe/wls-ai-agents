@@ -15,6 +15,7 @@ public interface RequestClassifierAgent {
             Categorize it as exactly one of:
             - DOMAIN_VIEW
             - PATCHING
+            - APP_MANAGEMENT
             - Diagnostic/Troubleshooting
 
             Reply with only one category token and nothing else.

@@ -149,6 +149,7 @@
     const chatBox = document.getElementById('chat-box');
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
+    const initialWelcomeMessage = "Hello! I'm here to help you manage and diagnose your WebLogic Server environment. Whether you need to troubleshoot a specific Service Request (SR), deploy an application, or apply a patch recommendation, I’ve got you covered. Just provide the domain details or describe the issue you're seeing, and we'll dive right in.";
     let summary = '';
     let taskContext = null;
     let assistantReady = false;
@@ -223,7 +224,6 @@
 
         const text = userInput.value.trim();
         if (!text) {
-            await requestAssistantMessage('');
             return;
         }
 
@@ -277,8 +277,9 @@
     sendButton.addEventListener('click', sendMessage);
     userInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-    setInputEnabled(false);
-    requestAssistantMessage('');
+    appendMessage(initialWelcomeMessage, 'assistant');
+    assistantReady = true;
+    setInputEnabled(true);
 </script>
 </body>
 </html>

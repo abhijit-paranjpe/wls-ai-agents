@@ -14,30 +14,46 @@ public interface RequestRouterAgent {
     Logger LOGGER = Logger.getLogger(RequestRouterAgent.class.getName());
 
     @ConditionalAgent(subAgents = {
-            DomainViewAgent.class,
+            DomainRuntimeAgent.class,
             PatchingAgent.class,
-            DiagnosticAgent.class
+            AppManagementAgent.class,
+            DiagnosticAgent.class,
+            FeatureDisabledAgent.class
     })
     String askExpert(@V("question") String question);
 
-    @ActivationCondition(DomainViewAgent.class)
+    @ActivationCondition(DomainRuntimeAgent.class)
     static boolean activateDomainView(@V("intent") RequestIntent intent) {
-        boolean selected = intent == RequestIntent.DOMAIN_VIEW;
-        logSelection("DomainViewAgent", intent, selected);
+        boolean selected = intent == RequestIntent.DOMAIN_VIEW && AgentFeatureFlags.isEnabled(intent);
+        logSelection("DomainRuntimeAgent", intent, selected);
         return selected;
     }
 
     @ActivationCondition(PatchingAgent.class)
     static boolean activatePatching(@V("intent") RequestIntent intent) {
-        boolean selected = intent == RequestIntent.PATCHING;
+        boolean selected = intent == RequestIntent.PATCHING && AgentFeatureFlags.isEnabled(intent);
         logSelection("PatchingAgent", intent, selected);
         return selected;
     }
 
     @ActivationCondition(DiagnosticAgent.class)
     static boolean activateDiagnostic(@V("intent") RequestIntent intent) {
-        boolean selected = intent == RequestIntent.DIAGNOSTIC_TROUBLESHOOTING;
+        boolean selected = intent == RequestIntent.DIAGNOSTIC_TROUBLESHOOTING && AgentFeatureFlags.isEnabled(intent);
         logSelection("DiagnosticAgent", intent, selected);
+        return selected;
+    }
+
+    @ActivationCondition(AppManagementAgent.class)
+    static boolean activateAppManagement(@V("intent") RequestIntent intent) {
+        boolean selected = intent == RequestIntent.APP_MANAGEMENT && AgentFeatureFlags.isEnabled(intent);
+        logSelection("AppManagementAgent", intent, selected);
+        return selected;
+    }
+
+    @ActivationCondition(FeatureDisabledAgent.class)
+    static boolean activateDisabledFeatureResponder(@V("intent") RequestIntent intent) {
+        boolean selected = intent != null && !AgentFeatureFlags.isEnabled(intent);
+        logSelection("FeatureDisabledAgent", intent, selected);
         return selected;
     }
 

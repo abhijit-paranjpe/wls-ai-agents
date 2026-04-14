@@ -7,7 +7,7 @@ This project is a Helidon-based POC that mirrors the multi-agent declarative pat
 It is aligned to your diagram and uses:
 
 - Main orchestrator: `WebLogicAgent`
-- Specialists: `DomainViewAgent`, `PatchingAgent`, `DiagnosticAgent`
+- Specialists: `DomainViewAgent`, `PatchingAgent`, `AppManagementAgent`, `DiagnosticAgent`
 - Classifier + conditional router + summarizer flow
 - Single shared model for all agents (`wls-shared-model`)
 - MCP server integration via `@Ai.McpClients("wls-tools-mcp-server")`
@@ -20,6 +20,7 @@ It is aligned to your diagram and uses:
   - `RequestRouterAgent`
   - `DomainViewAgent`
   - `PatchingAgent`
+  - `AppManagementAgent`
   - `DiagnosticAgent`
   - `SummarizerAgent`
   - `RequestIntent`
