@@ -74,6 +74,29 @@
             box-shadow: 0 15px 35px rgba(0,0,0,.4);
         }
 
+        #suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5rem;
+            margin-bottom: .2rem;
+        }
+
+        .suggestion-chip {
+            border: 1px solid var(--border-soft);
+            background: rgba(255,255,255,.92);
+            color: #2d3b61;
+            border-radius: 999px;
+            padding: .4rem .75rem;
+            font-size: .82rem;
+            cursor: pointer;
+            transition: all .15s ease;
+        }
+
+        .suggestion-chip:hover {
+            border-color: #b3c4ea;
+            background: #f3f7ff;
+        }
+
         #user-input.input {
             border: 0;
             box-shadow: none;
@@ -122,6 +145,25 @@
             color: #243252;
         }
 
+        .inline-action-link {
+            display: block;
+            width: 100%;
+            text-align: left;
+            border: 1px dashed #c9d8f7;
+            background: #f7faff;
+            color: #32487a;
+            border-radius: .6em;
+            padding: .45em .65em;
+            margin-top: .45em;
+            cursor: pointer;
+            font-size: .88rem;
+        }
+
+        .inline-action-link:hover {
+            background: #edf4ff;
+            border-color: #a9c0ee;
+        }
+
         @media (max-width: 768px) {
             #chat-container { width: 94vw; padding-top: 1.1rem; padding-bottom: .75rem; }
             .bubble { max-width: 88%; }
@@ -135,6 +177,7 @@
         <h1 class="title">WebLogic Assistant</h1>
     </div>
     <div id="chat-box"></div>
+    <div id="suggestions" aria-label="Suggested prompts"></div>
     <div id="input-container" class="field has-addons">
         <div class="control is-expanded">
             <input id="user-input" class="input" type="text" placeholder="Type your message..." />
@@ -149,6 +192,16 @@
     const chatBox = document.getElementById('chat-box');
     const userInput = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
+    const suggestionsBox = document.getElementById('suggestions');
+    const suggestionPrompts = [
+        'List all managed domains',
+        'Show domain overview for my active domain',
+        'Is my active domain on latest patches?',
+        'Show recommended patches for my active domain',
+        'Start all servers for my active domain',
+        'Stop all servers for my active domain',
+        'List deployed applications for my active domain'
+    ];
     const initialWelcomeMessage = "Hello! I'm here to help you manage and diagnose your WebLogic Server environment. Whether you need to troubleshoot a specific Service Request (SR), deploy an application, or apply a patch recommendation, I’ve got you covered. Just provide the domain details or describe the issue you're seeing, and we'll dive right in.";
     let summary = '';
     let taskContext = null;
@@ -213,10 +266,110 @@
         row.className = `message ${sender}`;
         const bubble = document.createElement('div');
         bubble.className = 'bubble';
-        bubble[sender === 'assistant' ? 'innerHTML' : 'textContent'] = sender === 'assistant' ? marked.parse(text) : text;
+        const renderedText = sender === 'assistant' ? stripServerStartBoilerplate(text) : text;
+        bubble[sender === 'assistant' ? 'innerHTML' : 'textContent'] = sender === 'assistant' ? marked.parse(renderedText) : renderedText;
+
+        if (sender === 'assistant') {
+            const actionLines = extractActionableLines(renderedText);
+            actionLines.forEach(line => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'inline-action-link';
+                button.textContent = line;
+                button.title = 'Click to send this request again';
+                button.addEventListener('click', () => sendPrompt(line));
+                bubble.appendChild(button);
+            });
+        }
+
         row.appendChild(bubble);
         chatBox.appendChild(row);
         chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function extractActionableLines(text) {
+        if (!text || typeof text !== 'string') return [];
+
+        const lines = text
+            .split('\n')
+            .map(line => line.replace(/^[-*\d.\s]+/, '').trim())
+            .filter(Boolean);
+
+        const seen = new Set();
+        const actions = [];
+        const pattern = /(track\s+async\s+job\s+status|list\s+all\s+managed\s+domains|show\s+domain\s+overview|list\s+pending\s+patches|show\s+recommended\s+patches|start\s+all\s+servers|stop\s+all\s+servers|list\s+deployed\s+applications|start\s+domain|stop\s+domain|restart\s+domain|shutdown\s+domain|job\s+status|track\s+job|track\s+async)/i;
+
+        for (const line of lines) {
+            if (line.length > 220) continue;
+            if (!pattern.test(line)) continue;
+            if (seen.has(line.toLowerCase())) continue;
+            seen.add(line.toLowerCase());
+            actions.push(line);
+        }
+
+        const derivedTrackingAction = deriveTrackingActionFromMetadata(text);
+        if (derivedTrackingAction && !seen.has(derivedTrackingAction.toLowerCase())) {
+            seen.add(derivedTrackingAction.toLowerCase());
+            actions.push(derivedTrackingAction);
+        }
+
+        return actions;
+    }
+
+    function deriveTrackingActionFromMetadata(text) {
+        if (!text || typeof text !== 'string') return null;
+
+        const hostMatch = text.match(/\bHost\s*:\s*([^\n\r]+)/i);
+        const pidMatch = text.match(/\bPID\s*:\s*([^\n\r]+)/i);
+
+        const host = hostMatch ? String(hostMatch[1] || '').trim() : '';
+        const pid = pidMatch ? String(pidMatch[1] || '').trim() : '';
+
+        if (!host || !pid) return null;
+        return `Track async job status for PID ${pid} on host ${host}`;
+    }
+
+    function stripServerStartBoilerplate(text) {
+        if (!text || typeof text !== 'string') return text;
+
+        const lines = text.split('\n');
+        const filtered = lines.filter(line => {
+            const normalized = String(line || '').trim().toLowerCase();
+            if (!normalized) return true;
+
+            return !(
+                normalized.startsWith("i've initiated the process to start all servers")
+                || normalized.startsWith("i have initiated the process to start all servers")
+                || normalized.startsWith("the job has been started with the following tracking information")
+                || normalized.startsWith("the operation has been triggered with the following tracking information")
+            );
+        });
+
+        return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    }
+
+    async function sendPrompt(text) {
+        if (!assistantReady) return;
+        const prompt = (text || '').trim();
+        if (!prompt) return;
+        appendMessage(prompt, 'user');
+        await requestAssistantMessage(prompt);
+    }
+
+    function renderSuggestions() {
+        suggestionsBox.innerHTML = '';
+        suggestionPrompts.forEach(prompt => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'suggestion-chip';
+            chip.textContent = prompt;
+            chip.title = 'Click to send this prompt';
+            chip.addEventListener('click', () => {
+                if (!assistantReady) return;
+                sendPrompt(prompt);
+            });
+            suggestionsBox.appendChild(chip);
+        });
     }
 
     async function sendMessage() {
@@ -278,6 +431,7 @@
     userInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
     appendMessage(initialWelcomeMessage, 'assistant');
+    renderSuggestions();
     assistantReady = true;
     setInputEnabled(true);
 </script>

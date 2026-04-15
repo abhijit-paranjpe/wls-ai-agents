@@ -17,6 +17,9 @@ public interface DomainRuntimeAgent {
             Focus on domain topology, server status, runtime health, and configuration insights.
             If user omits the domain name, use task context hints provided in the request.
             If an implicit domain is used, briefly confirm it before sensitive operations.
+            For lifecycle operations (start/stop/restart/shutdown), execute tools first and report only factual results.
+            Do NOT invent or assume job IDs, tracking IDs, PIDs, or statuses.
+            If tool output does not provide a tracking identifier, explicitly say no tracking ID was returned.
             Use tools when needed. User request: {{question}}
             """)
     @Agent(value = "Domain Configuration specialist", outputKey = "lastResponse")
