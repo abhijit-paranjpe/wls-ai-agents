@@ -21,18 +21,33 @@ agent-features:
   app-management:
     enabled: true
 
+agent-routing:
+  latency-logging: true
+  token-logging: true
+
 langchain4j:
+  ollama:
+    chat-model:
+      enabled: true
+
   providers:
     oci-gen-ai:
       base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
       compartment-id: "ocid1.compartment.oc1..aaaaaaaalb6or3fft6ch4qx6epz2se2wbghc5f2odxchp7x6qvy6umvx2taq"
       region: "us-ashburn-1"
       model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyag3w2xk76vlahjujj2gdfeuzhflt25gbo3bxidlsqfjla
-      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyargceyuaysrjzo2metq2rinavayxqmpu7tkm6mmfojcvq
-      #meta.llama-4-scout-17b-16e-instruct
-      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaw23hfc7mtvv5wef3gwvvaguyzqmhb5lx4r5s3y2xzc4a
-      #mode - xai.grok-4.20-reasoning
-      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyasuv7iwnlwaakofq7z3ftxewtgqknsntnxqeopehvitdq
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaayp5ccahfbpht56x7meyc26gyvojowmrbrr4xj626enq
+      #xai.grok-4-1-fast-reasoning
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaocp3cooe7jkje7irb7dsrspgobjtkxakutz76gjo3k3a
+      #xxxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyargceyuaysrjzo2metq2rinavayxqmpu7tkm6mmfojcvq
+      #xxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaw23hfc7mtvv5wef3gwvvaguyzqmhb5lx4r5s3y2xzc4a
+      #xxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyah6tjdejjashngznsylutuhhvufukzb2g2ls54g2flsfq
+    open-ai:
+        # Using OpenAI provider to call OCI GenAI model over OpenAI compatible API
+        api-key: /Users/aparanja/.oci/oci_api_key.pem
+        base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
+        log-requests: false
+        log-responses: false
 
   models:
     wls-shared-model:
@@ -40,16 +55,16 @@ langchain4j:
 
   mcp-clients:
     wls-tools-mcp-server:
-      uri: http://158.101.102.84:9001/wlsmcp
+      uri: http://129.158.52.77:9001/wlsmcp
 
 
-helidon.oci:
-  authentication-method: "config"
-  authentication:
-    config:
-      region: us-ashburn-1
-      fingerprint: "9a:09:f7:13:59:4c:ef:7a:53:52:d6:3d:0e:7a:36:99"
-      tenant-id: "ocid1.tenancy.oc1..aaaaaaaa7uw5cvrk54xplbcfz6t7gxqgssmdawwqfnourl4ms7qpwt4z3kla"
-      user-id: "ocid1.user.oc1..aaaaaaaa7btnm4iau2sce7kzynkcpfjumnql23u6xta7tqwhm7whipm3vtxq"
-      private-key:
-        path: /Users/aparanja/.oci/oci_api_key.pem
+#helidon.oci:
+#  authentication-method: "config"
+#  authentication:
+#    config:
+#      region: us-ashburn-1
+#      fingerprint: "9a:09:f7:13:59:4c:ef:7a:53:52:d6:3d:0e:7a:36:99"
+#      tenant-id: "ocid1.tenancy.oc1..aaaaaaaa7uw5cvrk54xplbcfz6t7gxqgssmdawwqfnourl4ms7qpwt4z3kla"
+#      user-id: "ocid1.user.oc1..aaaaaaaa7btnm4iau2sce7kzynkcpfjumnql23u6xta7tqwhm7whipm3vtxq"
+#      private-key:
+#        path: /Users/aparanja/.oci/oci_api_key.pem
