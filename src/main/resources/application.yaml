@@ -25,6 +25,21 @@ agent-routing:
   latency-logging: true
   token-logging: true
 
+memory:
+  provider: in-memory # supported: in-memory, redis, mongo
+  providers:
+    redis:
+      host: localhost
+      port: 6379
+      ttl-seconds: 86400
+    mongo:
+      uri: mongodb://localhost:27017
+      database: wls_agentic
+      collection: conversation_summaries
+
+managed-domains:
+  cache-refresh-seconds: 300
+
 langchain4j:
   ollama:
     chat-model:

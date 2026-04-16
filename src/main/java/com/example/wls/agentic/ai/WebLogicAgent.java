@@ -28,6 +28,8 @@ public interface WebLogicAgent {
             Use this structured task context to tailor responses and decisions:
             {{taskContext}}
 
+            The task context is persisted across turns by conversationId/taskId/userId.
+            Treat targetDomain in task context as authoritative for follow-up requests unless the user explicitly switches domain.
             Reuse targetDomain from task context when the user asks follow-up operations without explicitly naming a domain.
             If confirmTargetOnImplicitReuse is true, explicitly confirm the inferred domain before risky operations.
             """)

@@ -3,6 +3,8 @@ package com.example.wls.agentic.rest;
 import com.example.wls.agentic.ai.WebLogicAgent;
 import com.example.wls.agentic.dto.AgentResponse;
 import com.example.wls.agentic.dto.TaskContext;
+import com.example.wls.agentic.memory.ConversationMemoryService;
+import com.example.wls.agentic.memory.ManagedDomainCacheService;
 import io.helidon.http.Http;
 import io.helidon.service.registry.Service;
 import io.helidon.webserver.http.RestServer;
@@ -15,8 +17,10 @@ import jakarta.json.JsonValue;
 
 import java.io.StringReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.logging.Level;
@@ -53,10 +57,16 @@ public class ChatBotEndpoint {
             "(?i)\\bhosts?\\s+([A-Za-z0-9._-]+(?:\\s*,\\s*[A-Za-z0-9._-]+)*)");
 
     private final WebLogicAgent agent;
+    private final ConversationMemoryService conversationMemoryService;
+    private final ManagedDomainCacheService managedDomainCacheService;
 
     @Service.Inject
-    public ChatBotEndpoint(WebLogicAgent agent) {
+    public ChatBotEndpoint(WebLogicAgent agent,
+                           ConversationMemoryService conversationMemoryService,
+                           ManagedDomainCacheService managedDomainCacheService) {
         this.agent = agent;
+        this.conversationMemoryService = conversationMemoryService;
+        this.managedDomainCacheService = managedDomainCacheService;
     }
 
     @Http.POST
@@ -67,9 +77,39 @@ public class ChatBotEndpoint {
         logContext("parsed-request", msg.taskContext());
 
         TaskContext incomingContext = msg.taskContext() == null ? TaskContext.empty() : msg.taskContext();
+        TaskContext identifiedIncomingContext = ensureConversationId(incomingContext);
 
-        TaskContext context = incomingContext.withMemorySummary(
-                nonEmpty(incomingContext.memorySummary(), msg.summary()));
+        String memoryKey = resolveMemoryKey(identifiedIncomingContext);
+        TaskContext persistedContext = loadPersistedTaskContext(memoryKey);
+        LOGGER.log(Level.FINE, "Loaded persisted context for memory key: {0}", memoryKey);
+        TaskContext context = mergeContexts(persistedContext, identifiedIncomingContext);
+
+        if (isBlank(context.conversationId()) && !isBlank(memoryKey)) {
+            context = new TaskContext(
+                    context.taskId(),
+                    memoryKey,
+                    context.userId(),
+                    context.intent(),
+                    context.targetDomain(),
+                    context.targetServers(),
+                    context.targetHosts(),
+                    context.hostPids(),
+                    context.environment(),
+                    context.riskLevel(),
+                    context.approvalRequired(),
+                    context.confirmTargetOnImplicitReuse(),
+                    context.constraints(),
+                    context.memorySummary());
+        }
+
+        context = context.withMemorySummary(firstNonBlank(
+                incomingContext.memorySummary(),
+                msg.summary(),
+                persistedContext == null ? null : persistedContext.memorySummary(),
+                context.memorySummary()));
+
+
+        LOGGER.log(Level.FINE, "**Merged task context before enrichment: {0}", context);
 
         String question = nonEmpty(msg.message(), "");
         context = applyDomainContextFromQuestion(question, context);
@@ -79,9 +119,19 @@ public class ChatBotEndpoint {
 
         String contextualizedQuestion = maybeApplyImplicitDomainContext(question, context);
 
-        String summary = nonEmpty(msg.summary(), context.memorySummary());
+        String persistedSummary = loadPersistedSummary(memoryKey);
+        String summary = firstNonBlank(msg.summary(), context.memorySummary(), persistedSummary, "");
         TaskContext compactedContext = compactContext(context);
         String compactedSummary = truncate(summary, MAX_MEMORY_SUMMARY_CHARS);
+
+        LOGGER.log(Level.FINE,
+                "Memory lookup key={0}, incomingDomain={1}, persistedDomain={2}, mergedDomain={3}",
+                new Object[]{
+                        safe(memoryKey),
+                        safe(identifiedIncomingContext.targetDomain()),
+                        persistedContext == null ? "" : safe(persistedContext.targetDomain()),
+                        safe(context.targetDomain())
+                });
 
         try {
             AgentResponse response = agent.chat(
@@ -89,6 +139,8 @@ public class ChatBotEndpoint {
                     compactedSummary,
                     compactedContext.toPromptContext(),
                     compactedContext);
+            savePersistedSummary(response.taskContext(), response.summary());
+            savePersistedTaskContext(response.taskContext());
             logContext("agent-response", response.taskContext());
             return response;
         } catch (RuntimeException e) {
@@ -231,13 +283,125 @@ public class ChatBotEndpoint {
         return (value == null || value.isBlank()) ? fallback : value;
     }
 
-    private static TaskContext applyDomainContextFromQuestion(String question, TaskContext context) {
+    private static String firstNonBlank(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    private String loadPersistedSummary(String conversationId) {
+        return conversationMemoryService.store().loadSummary(conversationId).orElse("");
+    }
+
+    private void savePersistedSummary(TaskContext context, String summary) {
+        if (context == null) {
+            return;
+        }
+        conversationMemoryService.store().saveSummary(context.conversationId(), summary);
+    }
+
+    private TaskContext loadPersistedTaskContext(String conversationId) {
+        return conversationMemoryService.store().loadTaskContext(conversationId).orElse(null);
+    }
+
+    private void savePersistedTaskContext(TaskContext taskContext) {
+        if (taskContext == null) {
+            return;
+        }
+        conversationMemoryService.store().saveTaskContext(taskContext.conversationId(), taskContext);
+    }
+
+    private static TaskContext mergeContexts(TaskContext persisted, TaskContext incoming) {
+        LOGGER.log(Level.INFO, "Merging contexts. Incoming: {0}, Persisted: {1}", new Object[]{incoming, persisted});
+
+        if (persisted == null) {
+            return incoming == null ? TaskContext.empty() : incoming;
+        }
+        if (incoming == null) {
+            return persisted;
+        }
+        return new TaskContext(
+                firstNonBlank(incoming.taskId(), persisted.taskId()),
+                firstNonBlank(incoming.conversationId(), persisted.conversationId()),
+                firstNonBlank(incoming.userId(), persisted.userId()),
+                firstNonBlank(incoming.intent(), persisted.intent()),
+                firstNonBlank(incoming.targetDomain(), persisted.targetDomain()),
+                firstNonBlank(incoming.targetServers(), persisted.targetServers()),
+                firstNonBlank(incoming.targetHosts(), persisted.targetHosts()),
+                incoming.hostPids() != null ? incoming.hostPids() : persisted.hostPids(),
+                firstNonBlank(incoming.environment(), persisted.environment()),
+                firstNonBlank(incoming.riskLevel(), persisted.riskLevel()),
+                incoming.approvalRequired() != null ? incoming.approvalRequired() : persisted.approvalRequired(),
+                incoming.confirmTargetOnImplicitReuse() != null
+                        ? incoming.confirmTargetOnImplicitReuse()
+                        : persisted.confirmTargetOnImplicitReuse(),
+                firstNonBlank(incoming.constraints(), persisted.constraints()),
+                firstNonBlank(incoming.memorySummary(), persisted.memorySummary()));
+    }
+
+    private String resolveMemoryKey(TaskContext context) {
+        if (context == null) {
+            return null;
+        }
+        String key = firstNonBlank(context.conversationId(), context.taskId(), context.userId());
+        if (isBlank(key)) {
+            LOGGER.log(Level.FINE,
+                    "No conversationId/taskId/userId provided; cross-turn context persistence cannot be applied.");
+        }else {
+            LOGGER.log(Level.INFO, "Resolved memory key for context persistence: {0}", key);
+        }
+        return key;
+    }
+
+    private static TaskContext ensureConversationId(TaskContext context) {
+        TaskContext base = context == null ? TaskContext.empty() : context;
+        if (!isBlank(base.conversationId())) {
+            return base;
+        }
+
+        String generatedConversationId = "conv-" + UUID.randomUUID();
+        return new TaskContext(
+                base.taskId(),
+                generatedConversationId,
+                base.userId(),
+                base.intent(),
+                base.targetDomain(),
+                base.targetServers(),
+                base.targetHosts(),
+                base.hostPids(),
+                base.environment(),
+                base.riskLevel(),
+                base.approvalRequired(),
+                base.confirmTargetOnImplicitReuse(),
+                base.constraints(),
+                base.memorySummary());
+    }
+
+    private TaskContext applyDomainContextFromQuestion(String question, TaskContext context) {
+        List<String> managedDomains = managedDomainCacheService.getDomains();
+
         if (!shouldInferDomainFromQuestion(question)) {
+            if (isBlank(context.targetDomain()) && managedDomains.size() == 1) {
+                String onlyDomain = managedDomains.get(0);
+                LOGGER.log(Level.FINE, "Auto-selected single managed domain from cache: {0}", onlyDomain);
+                return context.withTargetDomain(onlyDomain);
+            }
             return context;
         }
 
-        String detectedDomain = detectMentionedDomain(question);
+        String detectedDomain = detectMentionedDomain(question, managedDomains);
         if (detectedDomain == null || detectedDomain.isBlank()) {
+            if (isBlank(context.targetDomain()) && managedDomains.size() == 1) {
+                String onlyDomain = managedDomains.get(0);
+                LOGGER.log(Level.FINE, "Auto-selected single managed domain from cache: {0}", onlyDomain);
+                return context.withTargetDomain(onlyDomain);
+            }
             return context;
         }
 
@@ -282,7 +446,7 @@ public class ChatBotEndpoint {
         return context.withTargetHosts(detectedHosts);
     }
 
-    private static String maybeApplyImplicitDomainContext(String question, TaskContext context) {
+    private String maybeApplyImplicitDomainContext(String question, TaskContext context) {
         if (question == null || question.isBlank()) {
             return "";
         }
@@ -296,7 +460,7 @@ public class ChatBotEndpoint {
                     """.formatted(question);
         }
 
-        if (detectMentionedDomain(question) != null || isBlank(context.targetDomain())) {
+        if (detectMentionedDomain(question, managedDomainCacheService.getDomains()) != null || isBlank(context.targetDomain())) {
             return question;
         }
 
@@ -319,7 +483,7 @@ public class ChatBotEndpoint {
                 """.formatted(question, context.targetDomain(), domainReuseDirective, confirmationHint);
     }
 
-    private static String detectMentionedDomain(String question) {
+    private static String detectMentionedDomain(String question, List<String> managedDomains) {
         if (question == null) {
             return null;
         }
@@ -340,7 +504,7 @@ public class ChatBotEndpoint {
                 return null;
             }
 
-            return candidate;
+            return resolveManagedDomainCandidate(candidate, managedDomains);
         }
 
         // Fallback for explicit domain tokens such as "wlsucm14c_domain"
@@ -350,8 +514,31 @@ public class ChatBotEndpoint {
             if (candidate != null && !candidate.isBlank()) {
                 String normalized = candidate.toLowerCase();
                 if (!NON_DOMAIN_KEYWORDS.contains(normalized)) {
-                    return candidate;
+                    return resolveManagedDomainCandidate(candidate, managedDomains);
                 }
+            }
+        }
+
+        return null;
+    }
+
+    private static String resolveManagedDomainCandidate(String candidate, List<String> managedDomains) {
+        if (candidate == null || candidate.isBlank()) {
+            return null;
+        }
+        if (managedDomains == null || managedDomains.isEmpty()) {
+            return candidate;
+        }
+
+        for (String managedDomain : managedDomains) {
+            if (managedDomain.equalsIgnoreCase(candidate)) {
+                return managedDomain;
+            }
+        }
+
+        for (String managedDomain : managedDomains) {
+            if (managedDomain.toLowerCase().startsWith(candidate.toLowerCase())) {
+                return managedDomain;
             }
         }
 
@@ -370,7 +557,7 @@ public class ChatBotEndpoint {
                 || lower.contains("restart")
                 || lower.contains("shutdown")
                 || lower.contains("graceful");
-        return mentionsGenericDomain && hasOperationVerb && detectMentionedDomain(question) == null;
+        return mentionsGenericDomain && hasOperationVerb;
     }
 
     private static String detectMentionedTargets(String question, Pattern pattern) {
