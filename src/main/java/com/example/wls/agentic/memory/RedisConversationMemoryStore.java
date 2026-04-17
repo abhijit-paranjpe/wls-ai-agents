@@ -4,6 +4,7 @@ import com.example.wls.agentic.dto.TaskContext;
 import io.helidon.config.Config;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
+import jakarta.json.JsonObjectBuilder;
 import jakarta.json.JsonReader;
 import redis.clients.jedis.JedisPooled;
 
@@ -56,10 +57,14 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                     null,
                     getString(o, "environment"),
                     getString(o, "riskLevel"),
-                    null,
-                    null,
+                    getBoolean(o, "approvalRequired"),
+                    getBoolean(o, "confirmTargetOnImplicitReuse"),
                     getString(o, "constraints"),
-                    getString(o, "memorySummary")));
+                    getString(o, "memorySummary"),
+                    getString(o, "pendingIntent"),
+                    getBoolean(o, "awaitingFollowUp"),
+                    getString(o, "lastUserRequest"),
+                    getString(o, "lastAssistantQuestion")));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -78,7 +83,7 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
         if (conversationId == null || conversationId.isBlank() || taskContext == null) {
             return;
         }
-        JsonObject json = Json.createObjectBuilder()
+        JsonObjectBuilder builder = Json.createObjectBuilder()
                 .add("taskId", safe(taskContext.taskId()))
                 .add("conversationId", safe(taskContext.conversationId()))
                 .add("userId", safe(taskContext.userId()))
@@ -90,12 +95,31 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                 .add("riskLevel", safe(taskContext.riskLevel()))
                 .add("constraints", safe(taskContext.constraints()))
                 .add("memorySummary", safe(taskContext.memorySummary()))
-                .build();
+                .add("pendingIntent", safe(taskContext.pendingIntent()))
+                .add("lastUserRequest", safe(taskContext.lastUserRequest()))
+                .add("lastAssistantQuestion", safe(taskContext.lastAssistantQuestion()));
+        addNullableBoolean(builder, "approvalRequired", taskContext.approvalRequired());
+        addNullableBoolean(builder, "confirmTargetOnImplicitReuse", taskContext.confirmTargetOnImplicitReuse());
+        addNullableBoolean(builder, "awaitingFollowUp", taskContext.awaitingFollowUp());
+        JsonObject json = builder.build();
         jedis.setex(TASK_CONTEXT_KEY_PREFIX + conversationId, ttlSeconds, json.toString());
     }
 
     private static String getString(JsonObject object, String key) {
         return object.containsKey(key) ? object.getString(key, "") : null;
+    }
+
+    private static Boolean getBoolean(JsonObject object, String key) {
+        if (!object.containsKey(key) || object.isNull(key)) {
+            return null;
+        }
+        return object.getBoolean(key);
+    }
+
+    private static void addNullableBoolean(JsonObjectBuilder builder, String key, Boolean value) {
+        if (value != null) {
+            builder.add(key, value);
+        }
     }
 
     private static String safe(String value) {

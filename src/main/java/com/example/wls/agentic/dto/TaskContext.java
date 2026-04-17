@@ -19,71 +19,64 @@ public record TaskContext(
         Boolean approvalRequired,
         Boolean confirmTargetOnImplicitReuse,
         String constraints,
-        String memorySummary) {
+        String memorySummary,
+        String pendingIntent,
+        Boolean awaitingFollowUp,
+        String lastUserRequest,
+        String lastAssistantQuestion) {
 
     public static TaskContext empty() {
-        return new TaskContext(null, null, null, null, null, null, null, null, null, null, null, true, null, null);
-    }
-
-    public String toPromptContext() {
-        return """
-                taskId: %s
-                conversationId: %s
-                userId: %s
-                intent: %s
-                targetDomain: %s
-                targetServers: %s
-                targetHosts: %s
-                hostPids: %s
-                environment: %s
-                riskLevel: %s
-                approvalRequired: %s
-                confirmTargetOnImplicitReuse: %s
-                constraints: %s
-                memorySummary: %s
-                """.formatted(
-                nz(taskId),
-                nz(conversationId),
-                nz(userId),
-                nz(intent),
-                nz(targetDomain),
-                nz(targetServers),
-                nz(targetHosts),
-                hostPids == null ? "" : hostPids,
-                nz(environment),
-                nz(riskLevel),
-                approvalRequired == null ? "" : approvalRequired,
-                confirmTargetOnImplicitReuse == null ? "" : confirmTargetOnImplicitReuse,
-                nz(constraints),
-                nz(memorySummary));
+        return new TaskContext(null, null, null, null, null, null, null, null, null, null, null, true,
+                null, null, null, null, null, null);
     }
 
     public TaskContext withMemorySummary(String newMemorySummary) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
-                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, newMemorySummary);
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, newMemorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
+    }
+
+    public TaskContext withIntent(String newIntent) {
+        return new TaskContext(taskId, conversationId, userId, newIntent, targetDomain, targetServers, targetHosts, hostPids,
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
     }
 
     public TaskContext withTargetDomain(String newTargetDomain) {
         return new TaskContext(taskId, conversationId, userId, intent, newTargetDomain, targetServers, targetHosts, hostPids,
-                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary);
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
     }
 
     public TaskContext withTargetServers(String newTargetServers) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, newTargetServers, targetHosts, hostPids,
-                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary);
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
     }
 
     public TaskContext withTargetHosts(String newTargetHosts) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, newTargetHosts, hostPids,
-                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary);
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
     }
 
     public TaskContext withHostPids(Map<String, String> newHostPids) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, newHostPids,
-                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary);
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion);
     }
 
-    private static String nz(String value) {
-        return value == null ? "" : value;
+    public TaskContext withLastUserRequest(String newLastUserRequest) {
+        return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, newLastUserRequest, lastAssistantQuestion);
+    }
+
+    public TaskContext withPendingFollowUp(String newPendingIntent,
+                                           Boolean newAwaitingFollowUp,
+                                           String newLastAssistantQuestion) {
+        return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                newPendingIntent, newAwaitingFollowUp, lastUserRequest, newLastAssistantQuestion);
     }
 }

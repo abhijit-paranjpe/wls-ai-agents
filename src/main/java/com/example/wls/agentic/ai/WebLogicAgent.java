@@ -41,10 +41,13 @@ public interface WebLogicAgent {
     @Output
     static AgentResponse createResponse(@V("lastResponse") String lastResponse,
                                         @V("nextSummary") String nextSummary,
+                                        @V("intent") RequestIntent intent,
                                         @V("taskContextObject") TaskContext taskContextObject) {
-        TaskContext finalContext = taskContextObject == null
-                ? TaskContext.empty().withMemorySummary(nextSummary)
-                : taskContextObject.withMemorySummary(nextSummary);
+        TaskContext baseContext = taskContextObject == null ? TaskContext.empty() : taskContextObject;
+        String resolvedIntent = intent == null ? baseContext.intent() : intent.name();
+        TaskContext finalContext = baseContext
+                .withIntent(resolvedIntent)
+                .withMemorySummary(nextSummary);
 
         return new AgentResponse(lastResponse, nextSummary, finalContext);
     }

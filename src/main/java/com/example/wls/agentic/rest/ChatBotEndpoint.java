@@ -3,6 +3,7 @@ package com.example.wls.agentic.rest;
 import com.example.wls.agentic.ai.WebLogicAgent;
 import com.example.wls.agentic.dto.AgentResponse;
 import com.example.wls.agentic.dto.TaskContext;
+import com.example.wls.agentic.dto.TaskContexts;
 import com.example.wls.agentic.memory.ConversationMemoryService;
 import com.example.wls.agentic.memory.ManagedDomainCacheService;
 import io.helidon.http.Http;
@@ -36,6 +37,12 @@ public class ChatBotEndpoint {
     private static final Logger LOGGER = Logger.getLogger(ChatBotEndpoint.class.getName());
     private static final int MAX_MEMORY_SUMMARY_CHARS = 3000;
     private static final int MAX_CONSTRAINTS_CHARS = 1000;
+    private static final Set<String> SHORT_AFFIRMATIVE_REPLIES = Set.of(
+            "yes", "y", "yep", "yeah", "sure", "ok", "okay", "confirm", "confirmed");
+    private static final Set<String> SHORT_NEGATIVE_REPLIES = Set.of(
+            "no", "n", "nope", "nah");
+    private static final Set<String> CANCELLATION_REPLIES = Set.of(
+            "cancel", "never mind", "nevermind", "stop", "forget it");
 
     private static final Pattern DOMAIN_MENTION_PATTERN = Pattern.compile(
             "(?i)\\b(?:for|in|on|of)?\\s*domain\\s+([A-Za-z0-9._-]+)");
@@ -99,7 +106,11 @@ public class ChatBotEndpoint {
                     context.approvalRequired(),
                     context.confirmTargetOnImplicitReuse(),
                     context.constraints(),
-                    context.memorySummary());
+                    context.memorySummary(),
+                    context.pendingIntent(),
+                    context.awaitingFollowUp(),
+                    context.lastUserRequest(),
+                    context.lastAssistantQuestion());
         }
 
         context = context.withMemorySummary(firstNonBlank(
@@ -112,12 +123,14 @@ public class ChatBotEndpoint {
         LOGGER.log(Level.FINE, "**Merged task context before enrichment: {0}", context);
 
         String question = nonEmpty(msg.message(), "");
-        context = applyDomainContextFromQuestion(question, context);
+        List<String> managedDomains = managedDomainCacheService.getDomains();
+        context = applyDomainContextFromQuestion(question, context, managedDomains);
         context = applyServerContextFromQuestion(question, context);
         context = applyHostContextFromQuestion(question, context);
         logContext("after-enrichment", context);
 
-        String contextualizedQuestion = maybeApplyImplicitDomainContext(question, context);
+        String followUpAwareQuestion = maybeRewritePendingFollowUpQuestion(question, context, managedDomains);
+        String contextualizedQuestion = maybeApplyImplicitDomainContext(followUpAwareQuestion, context, managedDomains);
 
         String persistedSummary = loadPersistedSummary(memoryKey);
         String summary = firstNonBlank(msg.summary(), context.memorySummary(), persistedSummary, "");
@@ -137,12 +150,19 @@ public class ChatBotEndpoint {
             AgentResponse response = agent.chat(
                     contextualizedQuestion,
                     compactedSummary,
-                    compactedContext.toPromptContext(),
+                    TaskContexts.toPromptContext(compactedContext),
                     compactedContext);
-            savePersistedSummary(response.taskContext(), response.summary());
-            savePersistedTaskContext(response.taskContext());
-            logContext("agent-response", response.taskContext());
-            return response;
+            TaskContext finalResponseContext = finalizeResponseTaskContext(
+                    context,
+                    response.taskContext(),
+                    question,
+                    response.message(),
+                    managedDomains);
+            AgentResponse finalResponse = new AgentResponse(response.message(), response.summary(), finalResponseContext);
+            savePersistedSummary(finalResponse.taskContext(), finalResponse.summary());
+            savePersistedTaskContext(finalResponse.taskContext());
+            logContext("agent-response", finalResponse.taskContext());
+            return finalResponse;
         } catch (RuntimeException e) {
             if (isClientUnavailableError(e)) {
                 AgentResponse fallback = new AgentResponse(
@@ -254,7 +274,11 @@ public class ChatBotEndpoint {
                 getBoolean(taskContextObject, "approvalRequired"),
                 getBoolean(taskContextObject, "confirmTargetOnImplicitReuse"),
                 getString(taskContextObject, "constraints"),
-                getString(taskContextObject, "memorySummary"));
+                getString(taskContextObject, "memorySummary"),
+                getString(taskContextObject, "pendingIntent"),
+                getBoolean(taskContextObject, "awaitingFollowUp"),
+                getString(taskContextObject, "lastUserRequest"),
+                getString(taskContextObject, "lastAssistantQuestion"));
     }
 
     private static String getString(JsonObject obj, String key) {
@@ -276,7 +300,11 @@ public class ChatBotEndpoint {
                 || obj.containsKey("targetHosts")
                 || obj.containsKey("hostPids")
                 || obj.containsKey("memorySummary")
-                || obj.containsKey("confirmTargetOnImplicitReuse");
+                || obj.containsKey("confirmTargetOnImplicitReuse")
+                || obj.containsKey("pendingIntent")
+                || obj.containsKey("awaitingFollowUp")
+                || obj.containsKey("lastUserRequest")
+                || obj.containsKey("lastAssistantQuestion");
     }
 
     private static String nonEmpty(String value, String fallback) {
@@ -342,7 +370,11 @@ public class ChatBotEndpoint {
                         ? incoming.confirmTargetOnImplicitReuse()
                         : persisted.confirmTargetOnImplicitReuse(),
                 firstNonBlank(incoming.constraints(), persisted.constraints()),
-                firstNonBlank(incoming.memorySummary(), persisted.memorySummary()));
+                firstNonBlank(incoming.memorySummary(), persisted.memorySummary()),
+                firstNonBlank(incoming.pendingIntent(), persisted.pendingIntent()),
+                incoming.awaitingFollowUp() != null ? incoming.awaitingFollowUp() : persisted.awaitingFollowUp(),
+                firstNonBlank(incoming.lastUserRequest(), persisted.lastUserRequest()),
+                firstNonBlank(incoming.lastAssistantQuestion(), persisted.lastAssistantQuestion()));
     }
 
     private String resolveMemoryKey(TaskContext context) {
@@ -380,11 +412,21 @@ public class ChatBotEndpoint {
                 base.approvalRequired(),
                 base.confirmTargetOnImplicitReuse(),
                 base.constraints(),
-                base.memorySummary());
+                base.memorySummary(),
+                base.pendingIntent(),
+                base.awaitingFollowUp(),
+                base.lastUserRequest(),
+                base.lastAssistantQuestion());
     }
 
-    private TaskContext applyDomainContextFromQuestion(String question, TaskContext context) {
-        List<String> managedDomains = managedDomainCacheService.getDomains();
+    private TaskContext applyDomainContextFromQuestion(String question, TaskContext context, List<String> managedDomains) {
+        String detectedDomain = detectMentionedDomain(question, managedDomains);
+        if (detectedDomain != null && !detectedDomain.isBlank()) {
+            if (!isBlank(context.targetDomain()) && !context.targetDomain().equalsIgnoreCase(detectedDomain)) {
+                return flushContextForDomainChange(context, detectedDomain);
+            }
+            return context.withTargetDomain(detectedDomain);
+        }
 
         if (!shouldInferDomainFromQuestion(question)) {
             if (isBlank(context.targetDomain()) && managedDomains.size() == 1) {
@@ -395,21 +437,12 @@ public class ChatBotEndpoint {
             return context;
         }
 
-        String detectedDomain = detectMentionedDomain(question, managedDomains);
-        if (detectedDomain == null || detectedDomain.isBlank()) {
-            if (isBlank(context.targetDomain()) && managedDomains.size() == 1) {
-                String onlyDomain = managedDomains.get(0);
-                LOGGER.log(Level.FINE, "Auto-selected single managed domain from cache: {0}", onlyDomain);
-                return context.withTargetDomain(onlyDomain);
-            }
-            return context;
+        if (isBlank(context.targetDomain()) && managedDomains.size() == 1) {
+            String onlyDomain = managedDomains.get(0);
+            LOGGER.log(Level.FINE, "Auto-selected single managed domain from cache: {0}", onlyDomain);
+            return context.withTargetDomain(onlyDomain);
         }
-
-        if (!isBlank(context.targetDomain()) && !context.targetDomain().equalsIgnoreCase(detectedDomain)) {
-            return flushContextForDomainChange(context, detectedDomain);
-        }
-
-        return context.withTargetDomain(detectedDomain);
+        return context;
     }
 
     private static TaskContext flushContextForDomainChange(TaskContext current, String newDomain) {
@@ -427,7 +460,74 @@ public class ChatBotEndpoint {
                 current.approvalRequired(),
                 current.confirmTargetOnImplicitReuse(),
                 current.constraints(),
+                null,
+                null,
+                false,
+                current.lastUserRequest(),
                 null);
+    }
+
+    private static String maybeRewritePendingFollowUpQuestion(String question,
+                                                              TaskContext context,
+                                                              List<String> managedDomains) {
+        if (question == null || question.isBlank() || context == null) {
+            return question;
+        }
+
+        if (!Boolean.TRUE.equals(context.awaitingFollowUp()) || isBlank(context.pendingIntent())) {
+            return question;
+        }
+
+        String normalized = normalizeReply(question);
+        String pendingIntent = context.pendingIntent();
+        String priorQuestion = safe(context.lastAssistantQuestion());
+        String priorUserRequest = safe(context.lastUserRequest());
+        String targetDomain = safe(context.targetDomain());
+        String suppliedDomain = detectMentionedDomain(question, managedDomains);
+
+        if (CANCELLATION_REPLIES.contains(normalized)) {
+            return """
+                    The user cancelled the pending %s workflow.
+                    Previous user request: %s
+                    Previous assistant follow-up question: %s
+                    Acknowledge the cancellation and do not continue the pending workflow.
+                    """.formatted(pendingIntent, priorUserRequest, priorQuestion).trim();
+        }
+
+        if (SHORT_AFFIRMATIVE_REPLIES.contains(normalized)) {
+            return """
+                    The user answered yes to the pending %s follow-up.
+                    Previous user request: %s
+                    Previous assistant follow-up question: %s
+                    Active target domain from task context: %s
+                    Treat previously inferred values as confirmed.
+                    Continue the %s workflow without asking for the domain again.
+                    Ask only for any remaining missing required information.
+                    """.formatted(pendingIntent, priorUserRequest, priorQuestion, targetDomain, pendingIntent).trim();
+        }
+
+        if (SHORT_NEGATIVE_REPLIES.contains(normalized)) {
+            return """
+                    The user answered no to the pending %s follow-up.
+                    Previous user request: %s
+                    Previous assistant follow-up question: %s
+                    Do not assume the previously inferred values are correct.
+                    Ask the user to clarify the incorrect value and provide the missing required information.
+                    """.formatted(pendingIntent, priorUserRequest, priorQuestion).trim();
+        }
+
+        if (isDomainSlotFollowUpReply(question, managedDomains)) {
+            return """
+                    The user supplied the target domain '%s' for the pending %s workflow.
+                    Previous user request: %s
+                    Previous assistant follow-up question: %s
+                    Continue the %s workflow using target domain '%s'.
+                    Ask only for any remaining missing required information.
+                    """.formatted(suppliedDomain, pendingIntent, priorUserRequest, priorQuestion,
+                    pendingIntent, suppliedDomain).trim();
+        }
+
+        return question;
     }
 
     private static TaskContext applyServerContextFromQuestion(String question, TaskContext context) {
@@ -446,7 +546,7 @@ public class ChatBotEndpoint {
         return context.withTargetHosts(detectedHosts);
     }
 
-    private String maybeApplyImplicitDomainContext(String question, TaskContext context) {
+    private String maybeApplyImplicitDomainContext(String question, TaskContext context, List<String> managedDomains) {
         if (question == null || question.isBlank()) {
             return "";
         }
@@ -460,7 +560,7 @@ public class ChatBotEndpoint {
                     """.formatted(question);
         }
 
-        if (detectMentionedDomain(question, managedDomainCacheService.getDomains()) != null || isBlank(context.targetDomain())) {
+        if (detectMentionedDomain(question, managedDomains) != null || isBlank(context.targetDomain())) {
             return question;
         }
 
@@ -488,6 +588,44 @@ public class ChatBotEndpoint {
             return null;
         }
 
+        if (managedDomains != null && !managedDomains.isEmpty()) {
+            String managedMatch = findManagedDomainMention(question, managedDomains);
+            if (!isBlank(managedMatch)) {
+                return managedMatch;
+            }
+            return null;
+        }
+
+        return detectMentionedDomainByHeuristic(question);
+    }
+
+    private static String findManagedDomainMention(String question, List<String> managedDomains) {
+        String normalizedQuestion = normalizeReply(question);
+        for (String managedDomain : managedDomains) {
+            if (managedDomain != null && managedDomain.equalsIgnoreCase(normalizedQuestion)) {
+                return managedDomain;
+            }
+        }
+
+        String loweredQuestion = question.toLowerCase();
+        for (String managedDomain : managedDomains) {
+            if (managedDomain == null || managedDomain.isBlank()) {
+                continue;
+            }
+            if (containsDomainToken(loweredQuestion, managedDomain.toLowerCase())) {
+                return managedDomain;
+            }
+        }
+
+        String simpleReplyCandidate = extractSimpleDomainReplyCandidate(question);
+        if (isBlank(simpleReplyCandidate)) {
+            return null;
+        }
+        return resolveManagedDomainCandidate(simpleReplyCandidate, managedDomains);
+    }
+
+    private static String detectMentionedDomainByHeuristic(String question) {
+
         Matcher matcher = DOMAIN_MENTION_PATTERN.matcher(question);
         if (matcher.find()) {
             String candidate = matcher.group(1);
@@ -504,7 +642,7 @@ public class ChatBotEndpoint {
                 return null;
             }
 
-            return resolveManagedDomainCandidate(candidate, managedDomains);
+            return candidate;
         }
 
         // Fallback for explicit domain tokens such as "wlsucm14c_domain"
@@ -514,7 +652,7 @@ public class ChatBotEndpoint {
             if (candidate != null && !candidate.isBlank()) {
                 String normalized = candidate.toLowerCase();
                 if (!NON_DOMAIN_KEYWORDS.contains(normalized)) {
-                    return resolveManagedDomainCandidate(candidate, managedDomains);
+                    return candidate;
                 }
             }
         }
@@ -536,17 +674,180 @@ public class ChatBotEndpoint {
             }
         }
 
+        String resolvedPrefixMatch = null;
         for (String managedDomain : managedDomains) {
             if (managedDomain.toLowerCase().startsWith(candidate.toLowerCase())) {
-                return managedDomain;
+                if (resolvedPrefixMatch != null && !resolvedPrefixMatch.equalsIgnoreCase(managedDomain)) {
+                    return null;
+                }
+                resolvedPrefixMatch = managedDomain;
             }
         }
 
-        return null;
+        return resolvedPrefixMatch;
     }
 
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private static String normalizeReply(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase().replaceAll("[.!?]+$", "");
+    }
+
+    private static TaskContext finalizeResponseTaskContext(TaskContext priorContext,
+                                                           TaskContext responseContext,
+                                                           String rawQuestion,
+                                                           String assistantMessage,
+                                                           List<String> managedDomains) {
+        TaskContext merged = mergeContexts(priorContext, responseContext);
+        String workflowRequest = shouldPreserveWorkflowRequest(rawQuestion, priorContext, managedDomains)
+                ? priorContext.lastUserRequest()
+                : rawQuestion;
+        merged = merged.withLastUserRequest(workflowRequest);
+
+        if (isCancellationReply(rawQuestion)) {
+            return TaskContexts.clearPendingFollowUp(merged);
+        }
+
+        String activeIntent = firstNonBlank(merged.intent(), merged.pendingIntent());
+        if (!shouldAwaitFollowUp(activeIntent, assistantMessage)) {
+            return TaskContexts.clearPendingFollowUp(merged);
+        }
+
+        return merged.withPendingFollowUp(activeIntent, true, extractAssistantFollowUpPrompt(assistantMessage));
+    }
+
+    private static boolean shouldAwaitFollowUp(String intent, String assistantMessage) {
+        if (isBlank(intent) || "GENERAL_ASSISTANCE".equalsIgnoreCase(intent) || isBlank(assistantMessage)) {
+            return false;
+        }
+
+        String lower = assistantMessage.toLowerCase();
+        return assistantMessage.contains("?")
+                || lower.contains("please confirm")
+                || lower.contains("could you please confirm")
+                || lower.contains("do you have specific")
+                || lower.contains("once i have this information")
+                || lower.contains("let me know")
+                || lower.contains("which domain")
+                || lower.contains("what domain")
+                || lower.contains("is this the correct domain");
+    }
+
+    private static String extractAssistantFollowUpPrompt(String assistantMessage) {
+        if (assistantMessage == null) {
+            return null;
+        }
+        return truncate(assistantMessage.trim(), MAX_CONSTRAINTS_CHARS);
+    }
+
+    private static boolean isCancellationReply(String question) {
+        return CANCELLATION_REPLIES.contains(normalizeReply(question));
+    }
+
+    private static boolean shouldPreserveWorkflowRequest(String rawQuestion,
+                                                         TaskContext priorContext,
+                                                         List<String> managedDomains) {
+        if (priorContext == null || !Boolean.TRUE.equals(priorContext.awaitingFollowUp())) {
+            return false;
+        }
+        String normalized = normalizeReply(rawQuestion);
+        return SHORT_AFFIRMATIVE_REPLIES.contains(normalized)
+                || SHORT_NEGATIVE_REPLIES.contains(normalized)
+                || CANCELLATION_REPLIES.contains(normalized)
+                || isDomainSlotFollowUpReply(rawQuestion, managedDomains);
+    }
+
+    private static boolean isDomainSlotFollowUpReply(String question, List<String> managedDomains) {
+        return detectMentionedDomain(question, managedDomains) != null
+                && !looksLikeStandaloneWorkflowRequest(question);
+    }
+
+    private static boolean looksLikeStandaloneWorkflowRequest(String question) {
+        if (question == null) {
+            return false;
+        }
+        String q = question.toLowerCase();
+        return q.contains("patch")
+                || q.contains("status")
+                || q.contains("overview")
+                || q.contains("details")
+                || q.contains("list")
+                || q.contains("view")
+                || q.contains("start")
+                || q.contains("stop")
+                || q.contains("restart")
+                || q.contains("shutdown")
+                || q.contains("graceful")
+                || q.contains("diagnostic")
+                || q.contains("troubleshoot");
+    }
+
+    private static String extractSimpleDomainReplyCandidate(String question) {
+        if (question == null) {
+            return null;
+        }
+        String trimmed = normalizeReply(question);
+        if (trimmed.isBlank()) {
+            return null;
+        }
+
+        String[] parts = trimmed.split("\\s+");
+        if (parts.length == 1) {
+            return cleanDomainCandidate(parts[0]);
+        }
+        if (parts.length == 2 && "domain".equals(parts[0])) {
+            return cleanDomainCandidate(parts[1]);
+        }
+        if (parts.length == 2 && ("use".equals(parts[0]) || "for".equals(parts[0]) || "its".equals(parts[0])
+                || "it's".equals(parts[0]))) {
+            return cleanDomainCandidate(parts[1]);
+        }
+        if (parts.length == 3 && "use".equals(parts[0]) && "domain".equals(parts[1])) {
+            return cleanDomainCandidate(parts[2]);
+        }
+        return null;
+    }
+
+    private static String cleanDomainCandidate(String candidate) {
+        if (candidate == null) {
+            return null;
+        }
+        int start = 0;
+        int end = candidate.length();
+        while (start < end && !Character.isLetterOrDigit(candidate.charAt(start))) {
+            start++;
+        }
+        while (end > start && !Character.isLetterOrDigit(candidate.charAt(end - 1))) {
+            end--;
+        }
+        return start >= end ? null : candidate.substring(start, end);
+    }
+
+    private static boolean containsDomainToken(String text, String domain) {
+        int fromIndex = 0;
+        while (fromIndex >= 0 && fromIndex < text.length()) {
+            int matchIndex = text.indexOf(domain, fromIndex);
+            if (matchIndex < 0) {
+                return false;
+            }
+            int matchEnd = matchIndex + domain.length();
+            boolean leftBoundary = matchIndex == 0 || !isDomainCharacter(text.charAt(matchIndex - 1));
+            boolean rightBoundary = matchEnd == text.length() || !isDomainCharacter(text.charAt(matchEnd));
+            if (leftBoundary && rightBoundary) {
+                return true;
+            }
+            fromIndex = matchIndex + 1;
+        }
+        return false;
+    }
+
+    private static boolean isDomainCharacter(char value) {
+        return Character.isLetterOrDigit(value) || value == '.' || value == '_' || value == '-';
     }
 
     private static boolean asksToOperateOnGenericDomain(String question) {
@@ -680,7 +981,11 @@ public class ChatBotEndpoint {
                 context.approvalRequired(),
                 context.confirmTargetOnImplicitReuse(),
                 truncate(context.constraints(), MAX_CONSTRAINTS_CHARS),
-                truncate(context.memorySummary(), MAX_MEMORY_SUMMARY_CHARS));
+                truncate(context.memorySummary(), MAX_MEMORY_SUMMARY_CHARS),
+                context.pendingIntent(),
+                context.awaitingFollowUp(),
+                truncate(context.lastUserRequest(), MAX_CONSTRAINTS_CHARS),
+                truncate(context.lastAssistantQuestion(), MAX_CONSTRAINTS_CHARS));
     }
 
     private static String truncate(String value, int maxChars) {

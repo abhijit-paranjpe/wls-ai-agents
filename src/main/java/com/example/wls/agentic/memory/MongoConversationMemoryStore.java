@@ -63,10 +63,14 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 null,
                 t.getString("environment"),
                 t.getString("riskLevel"),
-                null,
-                null,
+                getBoolean(t, "approvalRequired"),
+                getBoolean(t, "confirmTargetOnImplicitReuse"),
                 t.getString("constraints"),
-                t.getString("memorySummary")));
+                t.getString("memorySummary"),
+                t.getString("pendingIntent"),
+                getBoolean(t, "awaitingFollowUp"),
+                t.getString("lastUserRequest"),
+                t.getString("lastAssistantQuestion")));
     }
 
     @Override
@@ -95,10 +99,21 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 .append("targetHosts", taskContext.targetHosts())
                 .append("environment", taskContext.environment())
                 .append("riskLevel", taskContext.riskLevel())
+                .append("approvalRequired", taskContext.approvalRequired())
+                .append("confirmTargetOnImplicitReuse", taskContext.confirmTargetOnImplicitReuse())
                 .append("constraints", taskContext.constraints())
-                .append("memorySummary", taskContext.memorySummary());
+                .append("memorySummary", taskContext.memorySummary())
+                .append("pendingIntent", taskContext.pendingIntent())
+                .append("awaitingFollowUp", taskContext.awaitingFollowUp())
+                .append("lastUserRequest", taskContext.lastUserRequest())
+                .append("lastAssistantQuestion", taskContext.lastAssistantQuestion());
         Document update = new Document("$set", new Document("conversationId", conversationId)
                 .append("taskContext", contextDoc));
         collection.updateOne(filter, update, new com.mongodb.client.model.UpdateOptions().upsert(true));
+    }
+
+    private static Boolean getBoolean(Document document, String key) {
+        Object value = document.get(key);
+        return value instanceof Boolean ? (Boolean) value : null;
     }
 }
