@@ -14,6 +14,7 @@ public interface RequestRouterAgent {
     Logger LOGGER = Logger.getLogger(RequestRouterAgent.class.getName());
 
     @ConditionalAgent(subAgents = {
+            DomainConfigurationAgent.class,
             DomainRuntimeAgent.class,
             PatchingAgent.class,
             AppManagementAgent.class,
@@ -23,11 +24,21 @@ public interface RequestRouterAgent {
     })
     String askExpert(@V("question") String question);
 
+    @ActivationCondition(DomainConfigurationAgent.class)
+    static boolean activateDomainConfiguration(@V("intent") RequestIntent intent,
+                                               @V("question") String question) {
+        boolean selected = AgentFeatureFlags.isEnabled(RequestIntent.DOMAIN_CONFIGURATION)
+                && intent == RequestIntent.DOMAIN_CONFIGURATION
+                && !looksLikeServerLifecycleRequest(question);
+        logSelection("DomainConfigurationAgent", intent, selected);
+        return selected;
+    }
+
     @ActivationCondition(DomainRuntimeAgent.class)
-    static boolean activateDomainView(@V("intent") RequestIntent intent,
-                                      @V("question") String question) {
-        boolean selected = (intent == RequestIntent.DOMAIN_VIEW && AgentFeatureFlags.isEnabled(intent))
-                || looksLikeDomainLifecycleRequest(question);
+    static boolean activateDomainRuntime(@V("intent") RequestIntent intent,
+                                         @V("question") String question) {
+        boolean selected = AgentFeatureFlags.isEnabled(RequestIntent.DOMAIN_RUNTIME)
+                && (intent == RequestIntent.DOMAIN_RUNTIME || looksLikeServerLifecycleRequest(question));
         logSelection("DomainRuntimeAgent", intent, selected);
         return selected;
     }
@@ -35,8 +46,8 @@ public interface RequestRouterAgent {
     @ActivationCondition(PatchingAgent.class)
     static boolean activatePatching(@V("intent") RequestIntent intent,
                                     @V("question") String question) {
-        boolean selected = (intent == RequestIntent.PATCHING && AgentFeatureFlags.isEnabled(intent))
-                || looksLikePatchingOrJobTrackingRequest(question);
+        boolean selected = AgentFeatureFlags.isEnabled(RequestIntent.PATCHING)
+                && (intent == RequestIntent.PATCHING || looksLikePatchingOrJobTrackingRequest(question));
         logSelection("PatchingAgent", intent, selected);
         return selected;
     }
@@ -79,20 +90,16 @@ public interface RequestRouterAgent {
     }
 
     private static boolean looksLikeOperationalRequest(String question) {
-        return looksLikeDomainLifecycleRequest(question) || looksLikePatchingOrJobTrackingRequest(question);
+        return looksLikeServerLifecycleRequest(question) || looksLikePatchingOrJobTrackingRequest(question);
     }
 
-    private static boolean looksLikeDomainLifecycleRequest(String question) {
+    private static boolean looksLikeServerLifecycleRequest(String question) {
         if (question == null) {
             return false;
         }
         String q = question.toLowerCase();
-        return q.contains("start domain")
-                || q.contains("stop domain")
-                || q.contains("restart domain")
-                || q.contains("shutdown domain")
-                || q.contains("graceful-shutdown")
-                || q.contains("graceful shutdown")
+        return q.contains("start server")
+                || q.contains("stop server")
                 || q.contains("start servers")
                 || q.contains("stop servers");
     }

@@ -12,16 +12,21 @@ import dev.langchain4j.service.V;
 public interface DomainRuntimeAgent {
 
     @UserMessage("""
-            You are a WebLogic Domain configuration specialist.
+            You are a WebLogic server runtime control specialist.
 
-            Focus on domain topology, server status, runtime health, and configuration insights.
+            Focus only on server runtime control actions:
+            - start servers
+            - stop servers
+
+            Do NOT handle domain overview, configuration change requests, domain lifecycle actions,
+            or server restart/shutdown requests.
             If user omits the domain name, use task context hints provided in the request.
             If an implicit domain is used, briefly confirm it before sensitive operations.
-            For lifecycle operations (start/stop/restart/shutdown), execute tools first and report only factual results.
+            For server start/stop operations, execute tools first and report only factual results.
             Do NOT invent or assume job IDs, tracking IDs, PIDs, or statuses.
             If tool output does not provide a tracking identifier, explicitly say no tracking ID was returned.
             Use tools when needed. User request: {{question}}
             """)
-    @Agent(value = "Domain Configuration specialist", outputKey = "lastResponse")
+    @Agent(value = "Domain runtime server control specialist", outputKey = "lastResponse")
     String analyzeRequest(@V("question") String question);
 }

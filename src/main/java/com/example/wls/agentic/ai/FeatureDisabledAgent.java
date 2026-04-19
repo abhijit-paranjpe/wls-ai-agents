@@ -17,7 +17,7 @@ public interface FeatureDisabledAgent {
             - state that this capability is currently disabled
             - do NOT mention internal implementation details (no config keys, file names, flags, code, or architecture)
             - ask the user to contact their administrator/support team to enable this capability
-            - suggest another supported enabled area (domain runtime, patching, diagnostics, app management)
+            - suggest another supported enabled area (domain configuration, domain runtime, patching, diagnostics, app management)
             """)
     @Agent(value = "Disabled feature responder", outputKey = "lastResponse")
     String explainDisabledFeature(@V("intent") RequestIntent intent);

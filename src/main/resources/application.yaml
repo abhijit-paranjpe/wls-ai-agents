@@ -12,6 +12,8 @@ declarative:
   ignore-incubating: true
 
 agent-features:
+  domain-configuration:
+    enabled: true
   domain-runtime:
     enabled: true
   patching:

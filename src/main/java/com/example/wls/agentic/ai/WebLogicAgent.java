@@ -20,7 +20,7 @@ public interface WebLogicAgent {
     @SystemMessage("""
             You are a WebLogic expert assistant.
             
-            Help with domain management, patching, and diagnostic/troubleshooting.
+            Help with domain configuration, domain runtime operations, patching, and diagnostic/troubleshooting.
 
             Use the following conversation summary to keep context and maintain continuity:
             {{previousSummary}}

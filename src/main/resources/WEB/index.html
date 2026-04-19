@@ -297,7 +297,7 @@
 
         const seen = new Set();
         const actions = [];
-        const pattern = /(track\s+async\s+job\s+status|list\s+all\s+managed\s+domains|show\s+domain\s+overview|list\s+pending\s+patches|show\s+recommended\s+patches|start\s+all\s+servers|stop\s+all\s+servers|list\s+deployed\s+applications|start\s+domain|stop\s+domain|restart\s+domain|shutdown\s+domain|job\s+status|track\s+job|track\s+async)/i;
+        const pattern = /(track\s+async\s+job\s+status|list\s+all\s+managed\s+domains|show\s+domain\s+overview|list\s+pending\s+patches|show\s+recommended\s+patches|start\s+all\s+servers|stop\s+all\s+servers|start\s+server|stop\s+server|list\s+deployed\s+applications|job\s+status|track\s+job|track\s+async)/i;
 
         for (const line of lines) {
             if (line.length > 220) continue;
