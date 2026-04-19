@@ -25,6 +25,9 @@ public interface WebLogicAgent {
             Use the following conversation summary to keep context and maintain continuity:
             {{previousSummary}}
 
+            Use the following recent conversation transcript as the primary conversation memory:
+            {{conversationTranscript}}
+
             Use this structured task context to tailor responses and decisions:
             {{taskContext}}
 
@@ -35,6 +38,7 @@ public interface WebLogicAgent {
             """)
     AgentResponse chat(@V("question") String question,
                        @V("previousSummary") String previousSummary,
+                       @V("conversationTranscript") String conversationTranscript,
                        @V("taskContext") String taskContext,
                        @V("taskContextObject") TaskContext taskContextObject);
 

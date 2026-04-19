@@ -27,6 +27,7 @@ agent-routing:
 
 memory:
   provider: in-memory # supported: in-memory, redis, mongo
+  max-messages: 20
   providers:
     redis:
       host: localhost

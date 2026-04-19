@@ -6,6 +6,11 @@ import com.example.wls.agentic.dto.TaskContext;
 import com.example.wls.agentic.dto.TaskContexts;
 import com.example.wls.agentic.memory.ConversationMemoryService;
 import com.example.wls.agentic.memory.ManagedDomainCacheService;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.memory.ChatMemory;
 import io.helidon.http.Http;
 import io.helidon.service.registry.Service;
 import io.helidon.webserver.http.RestServer;
@@ -37,6 +42,8 @@ public class ChatBotEndpoint {
     private static final Logger LOGGER = Logger.getLogger(ChatBotEndpoint.class.getName());
     private static final int MAX_MEMORY_SUMMARY_CHARS = 3000;
     private static final int MAX_CONSTRAINTS_CHARS = 1000;
+    private static final int MAX_TRANSCRIPT_CHARS = 6000;
+    private static final int MAX_TRANSCRIPT_MESSAGES = 12;
     private static final Set<String> SHORT_AFFIRMATIVE_REPLIES = Set.of(
             "yes", "y", "yep", "yeah", "sure", "ok", "okay", "confirm", "confirmed");
     private static final Set<String> SHORT_NEGATIVE_REPLIES = Set.of(
@@ -134,6 +141,7 @@ public class ChatBotEndpoint {
 
         String persistedSummary = loadPersistedSummary(memoryKey);
         String summary = firstNonBlank(msg.summary(), context.memorySummary(), persistedSummary, "");
+        String conversationTranscript = renderTranscript(loadConversationMessages(memoryKey));
         TaskContext compactedContext = compactContext(context);
         String compactedSummary = truncate(summary, MAX_MEMORY_SUMMARY_CHARS);
 
@@ -150,6 +158,7 @@ public class ChatBotEndpoint {
             AgentResponse response = agent.chat(
                     contextualizedQuestion,
                     compactedSummary,
+                    conversationTranscript,
                     TaskContexts.toPromptContext(compactedContext),
                     compactedContext);
             TaskContext finalResponseContext = finalizeResponseTaskContext(
@@ -159,6 +168,7 @@ public class ChatBotEndpoint {
                     response.message(),
                     managedDomains);
             AgentResponse finalResponse = new AgentResponse(response.message(), response.summary(), finalResponseContext);
+            appendConversationTurn(memoryKey, question, finalResponse.message());
             savePersistedSummary(finalResponse.taskContext(), finalResponse.summary());
             savePersistedTaskContext(finalResponse.taskContext());
             logContext("agent-response", finalResponse.taskContext());
@@ -171,6 +181,7 @@ public class ChatBotEndpoint {
                                 + "and confirm the backend service is running.",
                         compactedSummary,
                         compactedContext);
+                appendConversationTurn(memoryKey, question, fallback.message());
                 logContext("fallback-response", fallback.taskContext());
                 return fallback;
             }
@@ -338,11 +349,63 @@ public class ChatBotEndpoint {
         return conversationMemoryService.store().loadTaskContext(conversationId).orElse(null);
     }
 
+    private List<ChatMessage> loadConversationMessages(String conversationId) {
+        if (isBlank(conversationId)) {
+            return List.of();
+        }
+        return conversationMemoryService.chatMemory(conversationId).messages();
+    }
+
+    private void appendConversationTurn(String conversationId, String userMessage, String assistantMessage) {
+        if (isBlank(conversationId)) {
+            return;
+        }
+        ChatMemory chatMemory = conversationMemoryService.chatMemory(conversationId);
+        if (!isBlank(userMessage)) {
+            chatMemory.add(UserMessage.from(userMessage));
+        }
+        if (!isBlank(assistantMessage)) {
+            chatMemory.add(AiMessage.from(assistantMessage));
+        }
+    }
+
     private void savePersistedTaskContext(TaskContext taskContext) {
         if (taskContext == null) {
             return;
         }
         conversationMemoryService.store().saveTaskContext(taskContext.conversationId(), taskContext);
+    }
+
+    private static String renderTranscript(List<ChatMessage> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return "";
+        }
+
+        int fromIndex = Math.max(0, messages.size() - MAX_TRANSCRIPT_MESSAGES);
+        StringBuilder transcript = new StringBuilder();
+        for (ChatMessage message : messages.subList(fromIndex, messages.size())) {
+            if (message instanceof UserMessage userMessage) {
+                appendTranscriptLine(transcript, "User", userMessage.singleText());
+            } else if (message instanceof AiMessage aiMessage) {
+                appendTranscriptLine(transcript, "Assistant", aiMessage.text());
+            } else if (message instanceof SystemMessage systemMessage) {
+                appendTranscriptLine(transcript, "System", systemMessage.text());
+            } else {
+                appendTranscriptLine(transcript, message.type().name(), message.toString());
+            }
+        }
+
+        return truncate(transcript.toString().trim(), MAX_TRANSCRIPT_CHARS);
+    }
+
+    private static void appendTranscriptLine(StringBuilder transcript, String role, String text) {
+        if (text == null || text.isBlank()) {
+            return;
+        }
+        if (!transcript.isEmpty()) {
+            transcript.append('\n');
+        }
+        transcript.append(role).append(": ").append(text.trim());
     }
 
     private static TaskContext mergeContexts(TaskContext persisted, TaskContext incoming) {

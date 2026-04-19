@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="wls-agent-arch-v2" name="WebLogic Multi-Agent Architecture">
-        <mxGraphModel dx="1840" dy="1003" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1300" math="0" shadow="0">
+        <mxGraphModel dx="1626" dy="480" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2000" pageHeight="1300" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -58,7 +58,7 @@
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="132" value="&lt;b&gt;AppManagementAgent&lt;/b&gt;&lt;br&gt;&lt;div&gt;@Agent outputKey: lastResponse&lt;br&gt;List/Deploy/Undeploy/Status&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" vertex="1" parent="20">
+                <mxCell id="132" value="&lt;b&gt;AppManagementAgent&lt;/b&gt;&lt;br&gt;&lt;div&gt;@Agent outputKey: lastResponse&lt;br&gt;List/Deploy/Undeploy/Status&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
                     <mxGeometry x="384.5" y="325" width="210" height="70" as="geometry"/>
                 </mxCell>
                 <mxCell id="104" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="20" source="22" target="132" edge="1">
@@ -71,7 +71,7 @@
                         <mxPoint x="480" y="310" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="140" value="AppManagement" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="20">
+                <mxCell id="140" value="AppManagement" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="20" vertex="1">
                     <mxGeometry x="450" y="280" width="85" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="103" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="20" source="22" target="24" edge="1">
@@ -85,17 +85,17 @@
                         <mxPoint x="290" y="290" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="134" value="\" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="103">
+                <mxCell id="134" value="\" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="103" vertex="1" connectable="0">
                     <mxGeometry x="-0.5333" relative="1" as="geometry">
                         <mxPoint as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="139" value="&amp;nbsp;DomainRuntime" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="103">
+                <mxCell id="139" value="&amp;nbsp;DomainRuntime" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="103" vertex="1" connectable="0">
                     <mxGeometry x="0.7692" y="1" relative="1" as="geometry">
                         <mxPoint y="17" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="133" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="20" source="22" target="25">
+                <mxCell id="133" value="" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.25;entryY=0;entryDx=0;entryDy=0;" parent="20" source="22" target="25" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <Array as="points">
                             <mxPoint x="570" y="260"/>
@@ -105,12 +105,12 @@
                         <mxPoint x="680" y="320" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="141" value="Patching" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="133">
+                <mxCell id="141" value="Patching" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="133" vertex="1" connectable="0">
                     <mxGeometry x="0.6364" y="-3" relative="1" as="geometry">
                         <mxPoint y="11" as="offset"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="150" value="Diagnostics" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="20">
+                <mxCell id="150" value="Diagnostics" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="20" vertex="1">
                     <mxGeometry x="890" y="280" width="70" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="40" value="Shared LLM Model&amp;nbsp;&lt;br&gt;@Ai.ChatModel(&quot;wls-shared-model&quot;)&lt;br&gt;for all agents" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
@@ -191,31 +191,31 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="135" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="135" value="Text" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="1250" y="500" width="60" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="142" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+                <mxCell id="142" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" parent="1" vertex="1">
                     <mxGeometry x="925" y="1130" width="770" height="150" as="geometry"/>
                 </mxCell>
-                <mxCell id="143" value="Domain A" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                <mxCell id="143" value="Domain A" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="1040" y="1180" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="144" value="Domain B" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                <mxCell id="144" value="Domain B" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="1240" y="1175" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="145" value="Domain C" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                <mxCell id="145" value="Domain C" style="rounded=1;whiteSpace=wrap;html=1;" parent="1" vertex="1">
                     <mxGeometry x="1430" y="1180" width="120" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="146" value="WebLogic Deployments" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=17;" vertex="1" parent="1">
+                <mxCell id="146" value="WebLogic Deployments" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=17;" parent="1" vertex="1">
                     <mxGeometry x="1180" y="1140" width="260" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="148" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="1" source="41" target="142">
+                <mxCell id="148" value="" style="endArrow=classic;html=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="41" target="142" edge="1">
                     <mxGeometry width="50" height="50" relative="1" as="geometry">
                         <mxPoint x="1620" y="1040" as="sourcePoint"/>
                         <mxPoint x="1670" y="990" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="149" value="Managment Rest&amp;nbsp; Endpoint" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" vertex="1" parent="1">
+                <mxCell id="149" value="Managment Rest&amp;nbsp; Endpoint" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;" parent="1" vertex="1">
                     <mxGeometry x="1210" y="1060" width="200" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="122" value="model binding" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.75;exitY=1;exitDx=0;exitDy=0;" parent="1" source="40" target="23" edge="1">
@@ -228,13 +228,22 @@
                         <mxPoint x="1860" y="460" as="targetPoint"/>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="152" value="AppMgmt ops" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="41">
+                <mxCell id="152" value="AppMgmt ops" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;exitX=0.25;exitY=0;exitDx=0;exitDy=0;" parent="1" source="41" edge="1">
                     <mxGeometry relative="1" as="geometry">
                         <mxPoint x="1193" y="530" as="targetPoint"/>
                         <Array as="points">
                             <mxPoint x="1193" y="911"/>
                         </Array>
                         <mxPoint x="1110" y="940" as="sourcePoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="153" value="RAG ( may be as MCP tool)&lt;div&gt;for KM articles, SR, documentation&amp;nbsp;&lt;/div&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+                    <mxGeometry x="1645" y="911" width="190" height="89" as="geometry"/>
+                </mxCell>
+                <mxCell id="154" value="Diagnostics" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;entryX=0.75;entryY=1;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="1" source="153" target="26">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="1744" y="550" as="targetPoint"/>
+                        <mxPoint x="1744" y="920" as="sourcePoint"/>
                     </mxGeometry>
                 </mxCell>
             </root>
