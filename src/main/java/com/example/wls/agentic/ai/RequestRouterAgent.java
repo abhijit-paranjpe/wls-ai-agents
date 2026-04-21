@@ -4,16 +4,21 @@ import io.helidon.integrations.langchain4j.Ai;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import dev.langchain4j.agentic.Agent;
 import dev.langchain4j.agentic.declarative.ActivationCondition;
 import dev.langchain4j.agentic.declarative.ConditionalAgent;
+import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
 
 @Ai.Agent("request-router")
+@Ai.ChatModel("wls-shared-model")
+@Ai.McpClients("wls-tools-mcp-server")
 public interface RequestRouterAgent {
 
     Logger LOGGER = Logger.getLogger(RequestRouterAgent.class.getName());
 
     @ConditionalAgent(subAgents = {
+            WorkflowSupervisorAgent.class,
             DomainConfigurationAgent.class,
             DomainRuntimeAgent.class,
             PatchingAgent.class,
@@ -22,7 +27,21 @@ public interface RequestRouterAgent {
             GeneralAssistantAgent.class,
             FeatureDisabledAgent.class
     })
+    @UserMessage("""
+            Classify the user request and route to the appropriate sub‑agent.
+            User request: {{question}}
+            """)
+    @Agent(value = "Request router", outputKey = "lastResponse")
     String askExpert(@V("question") String question);
+
+    @ActivationCondition(WorkflowSupervisorAgent.class)
+    static boolean activateWorkflowSupervisor(@V("intent") RequestIntent intent,
+                                              @V("question") String question) {
+        boolean selected = AgentFeatureFlags.isEnabled(RequestIntent.WORKFLOW_REQUEST)
+                && (intent == RequestIntent.WORKFLOW_REQUEST || looksLikeWorkflowRequest(question));
+        logSelection("WorkflowSupervisorAgent", intent, selected);
+        return selected;
+    }
 
     @ActivationCondition(DomainConfigurationAgent.class)
     static boolean activateDomainConfiguration(@V("intent") RequestIntent intent,
@@ -47,6 +66,7 @@ public interface RequestRouterAgent {
     static boolean activatePatching(@V("intent") RequestIntent intent,
                                     @V("question") String question) {
         boolean selected = AgentFeatureFlags.isEnabled(RequestIntent.PATCHING)
+                && !looksLikeWorkflowRequest(question)
                 && (intent == RequestIntent.PATCHING || looksLikePatchingOrJobTrackingRequest(question));
         logSelection("PatchingAgent", intent, selected);
         return selected;
@@ -90,7 +110,9 @@ public interface RequestRouterAgent {
     }
 
     private static boolean looksLikeOperationalRequest(String question) {
-        return looksLikeServerLifecycleRequest(question) || looksLikePatchingOrJobTrackingRequest(question);
+        return looksLikeServerLifecycleRequest(question)
+                || looksLikePatchingOrJobTrackingRequest(question)
+                || looksLikeWorkflowRequest(question);
     }
 
     private static boolean looksLikeServerLifecycleRequest(String question) {
@@ -120,5 +142,53 @@ public interface RequestRouterAgent {
                 || q.contains(" pid ")
                 || q.endsWith(" pid")
                 || q.contains("async job");
+    }
+
+    private static boolean looksLikeWorkflowRequest(String question) {
+        if (question == null) {
+            return false;
+        }
+        String q = question.toLowerCase().trim();
+        if (q.startsWith("/apply-patches")) {
+            return true;
+        }
+        if (looksLikeInformationalPatchRequest(q)) {
+            return false;
+        }
+        return looksLikePatchApplyCommand(q);
+    }
+
+    private static boolean looksLikePatchApplyCommand(String q) {
+        if (q == null || q.isBlank()) {
+            return false;
+        }
+        boolean patchApplyPhrase = (q.startsWith("apply ")
+                || q.startsWith("please apply")
+                || q.startsWith("can you apply")
+                || q.startsWith("could you apply")
+                || q.startsWith("i want you to apply")
+                || q.startsWith("go ahead and apply")
+                || q.contains(" please apply ")
+                || q.contains(" can you apply ")
+                || q.contains(" could you apply "))
+                && q.contains("patch");
+        return patchApplyPhrase;
+    }
+
+    private static boolean looksLikeInformationalPatchRequest(String q) {
+        if (q == null || q.isBlank()) {
+            return false;
+        }
+        return q.startsWith("is ")
+                || q.startsWith("are ")
+                || q.startsWith("list ")
+                || q.startsWith("show ")
+                || q.startsWith("what ")
+                || q.startsWith("which ")
+                || q.startsWith("do i have ")
+                || q.startsWith("does ")
+                || q.contains("patch status")
+                || q.contains("on latest patches")
+                || q.contains("latest patches?");
     }
 }

@@ -1,5 +1,6 @@
 package com.example.wls.agentic.rest;
 
+import com.example.wls.agentic.ai.RequestIntent;
 import com.example.wls.agentic.ai.WebLogicAgent;
 import com.example.wls.agentic.dto.AgentResponse;
 import com.example.wls.agentic.dto.TaskContext;
@@ -50,6 +51,7 @@ public class ChatBotEndpoint {
             "no", "n", "nope", "nah");
     private static final Set<String> CANCELLATION_REPLIES = Set.of(
             "cancel", "never mind", "nevermind", "stop", "forget it");
+    private static final String PATCHING_WORKFLOW_TYPE = "PATCHING";
 
     private static final Pattern DOMAIN_MENTION_PATTERN = Pattern.compile(
             "(?i)\\b(?:for|in|on|of)?\\s*domain\\s+([A-Za-z0-9._-]+)");
@@ -117,7 +119,10 @@ public class ChatBotEndpoint {
                     context.pendingIntent(),
                     context.awaitingFollowUp(),
                     context.lastUserRequest(),
-                    context.lastAssistantQuestion());
+                    context.lastAssistantQuestion(),
+                    context.workflowType(),
+                    context.workflowStep(),
+                    context.workflowStatus());
         }
 
         context = context.withMemorySummary(firstNonBlank(
@@ -130,7 +135,17 @@ public class ChatBotEndpoint {
         LOGGER.log(Level.FINE, "**Merged task context before enrichment: {0}", context);
 
         String question = nonEmpty(msg.message(), "");
+        WorkflowShortcut workflowShortcut = detectWorkflowShortcut(question);
+        if (workflowShortcut != null) {
+            question = workflowShortcut.rewrittenQuestion();
+            context = context.withIntent(RequestIntent.WORKFLOW_REQUEST.name())
+                    .withWorkflow(workflowShortcut.workflowType(),
+                            firstNonBlank(context.workflowStep(), "INIT"),
+                            firstNonBlank(context.workflowStatus(), "REQUESTED"));
+        }
+
         List<String> managedDomains = managedDomainCacheService.getDomains();
+        context = applyWorkflowContextFromQuestion(question, context);
         context = applyDomainContextFromQuestion(question, context, managedDomains);
         context = applyServerContextFromQuestion(question, context);
         context = applyHostContextFromQuestion(question, context);
@@ -289,7 +304,10 @@ public class ChatBotEndpoint {
                 getString(taskContextObject, "pendingIntent"),
                 getBoolean(taskContextObject, "awaitingFollowUp"),
                 getString(taskContextObject, "lastUserRequest"),
-                getString(taskContextObject, "lastAssistantQuestion"));
+                getString(taskContextObject, "lastAssistantQuestion"),
+                getString(taskContextObject, "workflowType"),
+                getString(taskContextObject, "workflowStep"),
+                getString(taskContextObject, "workflowStatus"));
     }
 
     private static String getString(JsonObject obj, String key) {
@@ -315,7 +333,10 @@ public class ChatBotEndpoint {
                 || obj.containsKey("pendingIntent")
                 || obj.containsKey("awaitingFollowUp")
                 || obj.containsKey("lastUserRequest")
-                || obj.containsKey("lastAssistantQuestion");
+                || obj.containsKey("lastAssistantQuestion")
+                || obj.containsKey("workflowType")
+                || obj.containsKey("workflowStep")
+                || obj.containsKey("workflowStatus");
     }
 
     private static String nonEmpty(String value, String fallback) {
@@ -437,7 +458,10 @@ public class ChatBotEndpoint {
                 firstNonBlank(incoming.pendingIntent(), persisted.pendingIntent()),
                 incoming.awaitingFollowUp() != null ? incoming.awaitingFollowUp() : persisted.awaitingFollowUp(),
                 firstNonBlank(incoming.lastUserRequest(), persisted.lastUserRequest()),
-                firstNonBlank(incoming.lastAssistantQuestion(), persisted.lastAssistantQuestion()));
+                firstNonBlank(incoming.lastAssistantQuestion(), persisted.lastAssistantQuestion()),
+                firstNonBlank(incoming.workflowType(), persisted.workflowType()),
+                firstNonBlank(incoming.workflowStep(), persisted.workflowStep()),
+                firstNonBlank(incoming.workflowStatus(), persisted.workflowStatus()));
     }
 
     private String resolveMemoryKey(TaskContext context) {
@@ -479,7 +503,23 @@ public class ChatBotEndpoint {
                 base.pendingIntent(),
                 base.awaitingFollowUp(),
                 base.lastUserRequest(),
-                base.lastAssistantQuestion());
+                base.lastAssistantQuestion(),
+                base.workflowType(),
+                base.workflowStep(),
+                base.workflowStatus());
+    }
+
+    private static TaskContext applyWorkflowContextFromQuestion(String question, TaskContext context) {
+        TaskContext safeContext = context == null ? TaskContext.empty() : context;
+        String workflowType = inferWorkflowType(question, safeContext.workflowType());
+        if (isBlank(workflowType)) {
+            return safeContext;
+        }
+        return safeContext.withIntent(RequestIntent.WORKFLOW_REQUEST.name())
+                .withWorkflow(
+                        workflowType,
+                        firstNonBlank(safeContext.workflowStep(), "INIT"),
+                        firstNonBlank(safeContext.workflowStatus(), "REQUESTED"));
     }
 
     private TaskContext applyDomainContextFromQuestion(String question, TaskContext context, List<String> managedDomains) {
@@ -527,6 +567,9 @@ public class ChatBotEndpoint {
                 null,
                 false,
                 current.lastUserRequest(),
+                null,
+                null,
+                null,
                 null);
     }
 
@@ -558,6 +601,13 @@ public class ChatBotEndpoint {
         }
 
         if (SHORT_AFFIRMATIVE_REPLIES.contains(normalized)) {
+            if (isPendingPatchingWorkflowFollowUp(pendingIntent, context)) {
+                return buildPatchingWorkflowContinuationQuestion(
+                        targetDomain,
+                        "The user already confirmed the pending patch-application workflow.",
+                        "Do not ask to confirm the domain or overall intent again. Continue directly with the next unresolved workflow step."
+                );
+            }
             return """
                     The user answered yes to the pending %s follow-up.
                     Previous user request: %s
@@ -580,6 +630,13 @@ public class ChatBotEndpoint {
         }
 
         if (isDomainSlotFollowUpReply(question, managedDomains)) {
+            if (isPendingPatchingWorkflowFollowUp(pendingIntent, context)) {
+                return buildPatchingWorkflowContinuationQuestion(
+                        firstNonBlank(suppliedDomain, targetDomain),
+                        "The user supplied the target domain for the pending patch-application workflow.",
+                        "Continue the existing patching workflow with this domain. Ask only for any remaining missing required confirmation or information."
+                );
+            }
             return """
                     The user supplied the target domain '%s' for the pending %s workflow.
                     Previous user request: %s
@@ -591,6 +648,35 @@ public class ChatBotEndpoint {
         }
 
         return question;
+    }
+
+    private static boolean isPendingPatchingWorkflowFollowUp(String pendingIntent, TaskContext context) {
+        if (PATCHING_WORKFLOW_TYPE.equalsIgnoreCase(safe(context.workflowType()))) {
+            return true;
+        }
+        if (pendingIntent == null || pendingIntent.isBlank()) {
+            return false;
+        }
+        return "PATCHING_WORKFLOW".equalsIgnoreCase(pendingIntent)
+                || (RequestIntent.WORKFLOW_REQUEST.name().equalsIgnoreCase(pendingIntent)
+                && PATCHING_WORKFLOW_TYPE.equalsIgnoreCase(safe(context.workflowType())));
+    }
+
+    private static String buildPatchingWorkflowContinuationQuestion(String targetDomain,
+                                                                    String continuationReason,
+                                                                    String nextStepInstruction) {
+        String command = isBlank(targetDomain) ? "/apply-patches" : "/apply-patches " + targetDomain;
+        String domainDirective = isBlank(targetDomain)
+                ? "Use the target domain already present in task context if available; otherwise ask only for the missing domain."
+                : "Target domain: " + targetDomain + ".";
+        return """
+                %s
+                Continuation context: %s
+                %s
+                %s
+                Do not restart the workflow from the beginning.
+                Ask only for any still-missing required information.
+                """.formatted(command, continuationReason, domainDirective, nextStepInstruction).trim();
     }
 
     private static TaskContext applyServerContextFromQuestion(String question, TaskContext context) {
@@ -773,15 +859,32 @@ public class ChatBotEndpoint {
         merged = merged.withLastUserRequest(workflowRequest);
 
         if (isCancellationReply(rawQuestion)) {
-            return TaskContexts.clearPendingFollowUp(merged);
+            TaskContext cancelled = TaskContexts.clearPendingFollowUp(merged);
+            if (!isBlank(cancelled.workflowType())) {
+                return cancelled.withWorkflow(null, null, null);
+            }
+            return cancelled;
         }
 
-        String activeIntent = firstNonBlank(merged.intent(), merged.pendingIntent());
+        String activeIntent = resolvePendingIntentLabel(merged);
         if (!shouldAwaitFollowUp(activeIntent, assistantMessage)) {
             return TaskContexts.clearPendingFollowUp(merged);
         }
 
         return merged.withPendingFollowUp(activeIntent, true, extractAssistantFollowUpPrompt(assistantMessage));
+    }
+
+    private static String resolvePendingIntentLabel(TaskContext context) {
+        if (context == null) {
+            return null;
+        }
+        if (!isBlank(context.pendingIntent())) {
+            return context.pendingIntent();
+        }
+        if (RequestIntent.WORKFLOW_REQUEST.name().equalsIgnoreCase(context.intent()) && !isBlank(context.workflowType())) {
+            return context.workflowType() + "_WORKFLOW";
+        }
+        return context.intent();
     }
 
     private static boolean shouldAwaitFollowUp(String intent, String assistantMessage) {
@@ -1012,12 +1115,14 @@ public class ChatBotEndpoint {
         }
 
         LOGGER.log(Level.FINE,
-                "TaskContext stage={0} domain={1}, servers={2}, hosts={3}, memorySummaryLen={4}",
+                "TaskContext stage={0} domain={1}, servers={2}, hosts={3}, workflowType={4}, workflowStep={5}, memorySummaryLen={6}",
                 new Object[]{
                         stage,
                         safe(context.targetDomain()),
                         safe(context.targetServers()),
                         safe(context.targetHosts()),
+                        safe(context.workflowType()),
+                        safe(context.workflowStep()),
                         context.memorySummary() == null ? 0 : context.memorySummary().length()
                 });
     }
@@ -1048,7 +1153,82 @@ public class ChatBotEndpoint {
                 context.pendingIntent(),
                 context.awaitingFollowUp(),
                 truncate(context.lastUserRequest(), MAX_CONSTRAINTS_CHARS),
-                truncate(context.lastAssistantQuestion(), MAX_CONSTRAINTS_CHARS));
+                truncate(context.lastAssistantQuestion(), MAX_CONSTRAINTS_CHARS),
+                context.workflowType(),
+                context.workflowStep(),
+                context.workflowStatus());
+    }
+
+    private static WorkflowShortcut detectWorkflowShortcut(String question) {
+        if (question == null) {
+            return null;
+        }
+        String trimmed = question.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.equalsIgnoreCase("/apply-patches")) {
+            return new WorkflowShortcut(PATCHING_WORKFLOW_TYPE,
+                    "Apply latest recommended patches to the target domain using the patching workflow.");
+        }
+        if (trimmed.toLowerCase().startsWith("/apply-patches ")) {
+            String remainder = trimmed.substring("/apply-patches".length()).trim();
+            String rewritten = remainder.isBlank()
+                    ? "Apply latest recommended patches to the target domain using the patching workflow."
+                    : "Apply latest recommended patches using the patching workflow. Additional user input: " + remainder;
+            return new WorkflowShortcut(PATCHING_WORKFLOW_TYPE, rewritten);
+        }
+        return null;
+    }
+
+    private static String inferWorkflowType(String question, String existingWorkflowType) {
+        if (!isBlank(existingWorkflowType)) {
+            return existingWorkflowType;
+        }
+        if (question == null) {
+            return null;
+        }
+        String q = question.toLowerCase().trim();
+        if (q.startsWith("/apply-patches") || looksLikePatchApplyWorkflowRequest(q)) {
+            return PATCHING_WORKFLOW_TYPE;
+        }
+        return null;
+    }
+
+    private static boolean looksLikePatchApplyWorkflowRequest(String q) {
+        if (q == null || q.isBlank() || looksLikeInformationalPatchRequest(q)) {
+            return false;
+        }
+        return (q.startsWith("apply ")
+                || q.startsWith("please apply")
+                || q.startsWith("can you apply")
+                || q.startsWith("could you apply")
+                || q.startsWith("i want you to apply")
+                || q.startsWith("go ahead and apply")
+                || q.contains(" please apply ")
+                || q.contains(" can you apply ")
+                || q.contains(" could you apply "))
+                && q.contains("patch");
+    }
+
+    private static boolean looksLikeInformationalPatchRequest(String q) {
+        if (q == null || q.isBlank()) {
+            return false;
+        }
+        return q.startsWith("is ")
+                || q.startsWith("are ")
+                || q.startsWith("list ")
+                || q.startsWith("show ")
+                || q.startsWith("what ")
+                || q.startsWith("which ")
+                || q.startsWith("do i have ")
+                || q.startsWith("does ")
+                || q.contains("patch status")
+                || q.contains("on latest patches")
+                || q.contains("latest patches?");
+    }
+
+    private record WorkflowShortcut(String workflowType, String rewrittenQuestion) {
     }
 
     private static String truncate(String value, int maxChars) {

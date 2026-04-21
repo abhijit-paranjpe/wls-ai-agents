@@ -8,6 +8,8 @@ import com.mongodb.client.MongoDatabase;
 import io.helidon.config.Config;
 import org.bson.Document;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static com.mongodb.client.model.Filters.eq;
@@ -60,7 +62,7 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 t.getString("targetDomain"),
                 t.getString("targetServers"),
                 t.getString("targetHosts"),
-                null,
+                getStringMap(t.get("hostPids", Document.class)),
                 t.getString("environment"),
                 t.getString("riskLevel"),
                 getBoolean(t, "approvalRequired"),
@@ -70,7 +72,10 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 t.getString("pendingIntent"),
                 getBoolean(t, "awaitingFollowUp"),
                 t.getString("lastUserRequest"),
-                t.getString("lastAssistantQuestion")));
+                t.getString("lastAssistantQuestion"),
+                t.getString("workflowType"),
+                t.getString("workflowStep"),
+                t.getString("workflowStatus")));
     }
 
     @Override
@@ -106,7 +111,13 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 .append("pendingIntent", taskContext.pendingIntent())
                 .append("awaitingFollowUp", taskContext.awaitingFollowUp())
                 .append("lastUserRequest", taskContext.lastUserRequest())
-                .append("lastAssistantQuestion", taskContext.lastAssistantQuestion());
+                .append("lastAssistantQuestion", taskContext.lastAssistantQuestion())
+                .append("workflowType", taskContext.workflowType())
+                .append("workflowStep", taskContext.workflowStep())
+                .append("workflowStatus", taskContext.workflowStatus());
+        if (taskContext.hostPids() != null && !taskContext.hostPids().isEmpty()) {
+            contextDoc.append("hostPids", new Document(taskContext.hostPids()));
+        }
         Document update = new Document("$set", new Document("conversationId", conversationId)
                 .append("taskContext", contextDoc));
         collection.updateOne(filter, update, new com.mongodb.client.model.UpdateOptions().upsert(true));
@@ -115,5 +126,16 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
     private static Boolean getBoolean(Document document, String key) {
         Object value = document.get(key);
         return value instanceof Boolean ? (Boolean) value : null;
+    }
+
+    private static Map<String, String> getStringMap(Document document) {
+        if (document == null) {
+            return null;
+        }
+        Map<String, String> result = new HashMap<>();
+        for (Map.Entry<String, Object> entry : document.entrySet()) {
+            result.put(entry.getKey(), entry.getValue() == null ? "" : String.valueOf(entry.getValue()));
+        }
+        return result.isEmpty() ? null : result;
     }
 }

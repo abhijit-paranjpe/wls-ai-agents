@@ -9,6 +9,8 @@ import jakarta.json.JsonReader;
 import redis.clients.jedis.JedisPooled;
 
 import java.io.StringReader;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 public class RedisConversationMemoryStore implements ConversationMemoryStore {
@@ -54,7 +56,7 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                     getString(o, "targetDomain"),
                     getString(o, "targetServers"),
                     getString(o, "targetHosts"),
-                    null,
+                    getStringMap(o.getJsonObject("hostPids")),
                     getString(o, "environment"),
                     getString(o, "riskLevel"),
                     getBoolean(o, "approvalRequired"),
@@ -64,7 +66,10 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                     getString(o, "pendingIntent"),
                     getBoolean(o, "awaitingFollowUp"),
                     getString(o, "lastUserRequest"),
-                    getString(o, "lastAssistantQuestion")));
+                    getString(o, "lastAssistantQuestion"),
+                    getString(o, "workflowType"),
+                    getString(o, "workflowStep"),
+                    getString(o, "workflowStatus")));
         } catch (RuntimeException e) {
             return Optional.empty();
         }
@@ -97,10 +102,14 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                 .add("memorySummary", safe(taskContext.memorySummary()))
                 .add("pendingIntent", safe(taskContext.pendingIntent()))
                 .add("lastUserRequest", safe(taskContext.lastUserRequest()))
-                .add("lastAssistantQuestion", safe(taskContext.lastAssistantQuestion()));
+                .add("lastAssistantQuestion", safe(taskContext.lastAssistantQuestion()))
+                .add("workflowType", safe(taskContext.workflowType()))
+                .add("workflowStep", safe(taskContext.workflowStep()))
+                .add("workflowStatus", safe(taskContext.workflowStatus()));
         addNullableBoolean(builder, "approvalRequired", taskContext.approvalRequired());
         addNullableBoolean(builder, "confirmTargetOnImplicitReuse", taskContext.confirmTargetOnImplicitReuse());
         addNullableBoolean(builder, "awaitingFollowUp", taskContext.awaitingFollowUp());
+        addNullableStringMap(builder, "hostPids", taskContext.hostPids());
         JsonObject json = builder.build();
         jedis.setex(TASK_CONTEXT_KEY_PREFIX + conversationId, ttlSeconds, json.toString());
     }
@@ -120,6 +129,28 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
         if (value != null) {
             builder.add(key, value);
         }
+    }
+
+    private static void addNullableStringMap(JsonObjectBuilder builder, String key, Map<String, String> value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        JsonObjectBuilder mapBuilder = Json.createObjectBuilder();
+        value.forEach((k, v) -> mapBuilder.add(k, safe(v)));
+        builder.add(key, mapBuilder.build());
+    }
+
+    private static Map<String, String> getStringMap(JsonObject object) {
+        if (object == null) {
+            return null;
+        }
+        Map<String, String> result = new HashMap<>();
+        for (String key : object.keySet()) {
+            if (!object.isNull(key)) {
+                result.put(key, object.getString(key, ""));
+            }
+        }
+        return result.isEmpty() ? null : result;
     }
 
     private static String safe(String value) {

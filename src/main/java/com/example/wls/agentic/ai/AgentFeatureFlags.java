@@ -15,6 +15,7 @@ final class AgentFeatureFlags {
         String key = switch (intent) {
             case DOMAIN_CONFIGURATION -> "agent-features.domain-configuration.enabled";
             case DOMAIN_RUNTIME -> "agent-features.domain-runtime.enabled";
+            case WORKFLOW_REQUEST -> "agent-features.workflow.enabled";
             case PATCHING -> "agent-features.patching.enabled";
             case APP_MANAGEMENT -> "agent-features.app-management.enabled";
             case DIAGNOSTIC_TROUBLESHOOTING -> "agent-features.diagnostic.enabled";
