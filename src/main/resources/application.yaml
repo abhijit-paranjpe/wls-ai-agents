@@ -74,6 +74,7 @@ langchain4j:
   mcp-clients:
     wls-tools-mcp-server:
       uri: http://150.136.60.226:9001/wlsmcp
+      
 
 
 #helidon.oci:

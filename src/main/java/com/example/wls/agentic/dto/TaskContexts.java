@@ -76,7 +76,8 @@ public final class TaskContexts {
                 null,
                 safeContext.workflowType(),
                 safeContext.workflowStep(),
-                safeContext.workflowStatus());
+                safeContext.workflowStatus(),
+                null);
     }
 
     private static String nz(String value) {

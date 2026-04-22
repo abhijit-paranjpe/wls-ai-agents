@@ -18,10 +18,14 @@ import dev.langchain4j.agentic.declarative.SequenceAgent;
 import dev.langchain4j.service.SystemMessage;
 import dev.langchain4j.service.V;
 
+import java.util.logging.Logger;
+
 @Ai.Agent("wls-expert")
 public interface WebLogicAgent {
 
     Pattern TASK_CONTEXT_BLOCK_PATTERN = Pattern.compile("(?s)```TASK_CONTEXT\\s*(\\{.*?})\\s*```");
+
+    static final Logger LOGGER = Logger.getLogger(WebLogicAgent.class.getName());
 
     @SequenceAgent(outputKey = "jsonResponse", subAgents = {
             RequestClassifierAgent.class,
@@ -119,7 +123,8 @@ public interface WebLogicAgent {
                 coalesceWorkflowString(getString(overrides, "lastAssistantQuestion"), baseContext.lastAssistantQuestion()),
                 coalesceWorkflowString(getString(overrides, "workflowType"), baseContext.workflowType()),
                 coalesceWorkflowString(getString(overrides, "workflowStep"), baseContext.workflowStep()),
-                coalesceWorkflowString(getString(overrides, "workflowStatus"), baseContext.workflowStatus()));
+                coalesceWorkflowString(getString(overrides, "workflowStatus"), baseContext.workflowStatus()),
+                baseContext.failureReason());
     }
 
     private static JsonObject extractStructuredTaskContext(String lastResponse) {
@@ -134,9 +139,15 @@ public interface WebLogicAgent {
         if (json == null || json.isBlank()) {
             return null;
         }
+        // Basic validation: check for balanced braces and quotes
+        if (!isValidJsonStructure(json)) {
+            LOGGER.warning("Invalid TASK_CONTEXT JSON structure detected: " + json.substring(0, Math.min(100, json.length())));
+            return null;
+        }
         try (JsonReader reader = Json.createReader(new StringReader(json))) {
             return reader.readObject();
-        } catch (RuntimeException ignored) {
+        } catch (RuntimeException e) {
+            LOGGER.warning("Failed to parse TASK_CONTEXT JSON: " + json.substring(0, Math.min(200, json.length())) + "... Error: " + e.getMessage());
             return null;
         }
     }
@@ -146,6 +157,26 @@ public interface WebLogicAgent {
             return lastResponse;
         }
         return TASK_CONTEXT_BLOCK_PATTERN.matcher(lastResponse).replaceAll("").trim();
+    }
+
+    private static boolean isValidJsonStructure(String json) {
+        if (json == null || json.isBlank()) return false;
+        int braceCount = 0;
+        int quoteCount = 0;
+        boolean inString = false;
+        for (char c : json.toCharArray()) {
+            if (c == '{') braceCount++;
+            else if (c == '}') braceCount--;
+            else if (c == '"') {
+                if (!inString) {
+                    inString = true;
+                    quoteCount++;
+                } else {
+                    inString = false;
+                }
+            }
+        }
+        return braceCount == 0 && quoteCount % 2 == 0;
     }
 
     private static String getString(JsonObject object, String key) {

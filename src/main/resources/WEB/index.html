@@ -258,7 +258,29 @@
             merged.hostPids = { ...prev.hostPids, ...next.hostPids };
         }
 
+        clearEphemeralTaskContextField(merged, next, 'pendingIntent');
+        clearEphemeralTaskContextField(merged, next, 'lastAssistantQuestion');
+        clearEphemeralTaskContextField(merged, next, 'workflowType');
+        clearEphemeralTaskContextField(merged, next, 'workflowStep');
+        clearEphemeralTaskContextField(merged, next, 'workflowStatus');
+
+        if (!Object.prototype.hasOwnProperty.call(next, 'awaitingFollowUp') || next.awaitingFollowUp == null) {
+            delete merged.awaitingFollowUp;
+        }
+
         return Object.keys(merged).length ? merged : null;
+    }
+
+    function clearEphemeralTaskContextField(merged, next, fieldName) {
+        if (!Object.prototype.hasOwnProperty.call(next, fieldName)) {
+            delete merged[fieldName];
+            return;
+        }
+
+        const value = next[fieldName];
+        if (value == null || (typeof value === 'string' && value.trim() === '')) {
+            delete merged[fieldName];
+        }
     }
 
     function appendMessage(text, sender) {
