@@ -260,9 +260,6 @@
 
         clearEphemeralTaskContextField(merged, next, 'pendingIntent');
         clearEphemeralTaskContextField(merged, next, 'lastAssistantQuestion');
-        clearEphemeralTaskContextField(merged, next, 'workflowType');
-        clearEphemeralTaskContextField(merged, next, 'workflowStep');
-        clearEphemeralTaskContextField(merged, next, 'workflowStatus');
 
         if (!Object.prototype.hasOwnProperty.call(next, 'awaitingFollowUp') || next.awaitingFollowUp == null) {
             delete merged.awaitingFollowUp;

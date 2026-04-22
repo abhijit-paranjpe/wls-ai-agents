@@ -113,6 +113,7 @@
     </dependencies>
 
     <build>
+        <finalName>wls-agents</finalName>
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>

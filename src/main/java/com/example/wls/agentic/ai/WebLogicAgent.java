@@ -50,10 +50,6 @@ public interface WebLogicAgent {
             Treat targetDomain in task context as authoritative for follow-up requests unless the user explicitly switches domain.
             Reuse targetDomain from task context when the user asks follow-up operations without explicitly naming a domain.
             If confirmTargetOnImplicitReuse is true, explicitly confirm the inferred domain before risky operations.
-            If the request indicates a continuation of a pending workflow, preserve that workflow context
-            and continue it instead of falling back to general assistance.
-            If a pending workflow was already confirmed by the user, do not ask to reconfirm the domain
-            or overall intent when task context already contains them.
             """)
     AgentResponse chat(@V("question") String question,
                        @V("previousSummary") String previousSummary,
@@ -101,9 +97,9 @@ public interface WebLogicAgent {
                 firstNonBlank(getString(overrides, "conversationId"), baseContext.conversationId()),
                 firstNonBlank(getString(overrides, "userId"), baseContext.userId()),
                 firstNonBlank(getString(overrides, "intent"), baseContext.intent()),
-                coalesceWorkflowString(getString(overrides, "targetDomain"), baseContext.targetDomain()),
-                coalesceWorkflowString(getString(overrides, "targetServers"), baseContext.targetServers()),
-                coalesceWorkflowString(getString(overrides, "targetHosts"), baseContext.targetHosts()),
+                coalesceNullableString(getString(overrides, "targetDomain"), baseContext.targetDomain()),
+                coalesceNullableString(getString(overrides, "targetServers"), baseContext.targetServers()),
+                coalesceNullableString(getString(overrides, "targetHosts"), baseContext.targetHosts()),
                 firstNonEmptyMap(getStringMap(overrides.getJsonObject("hostPids")), baseContext.hostPids()),
                 firstNonBlank(getString(overrides, "environment"), baseContext.environment()),
                 firstNonBlank(getString(overrides, "riskLevel"), baseContext.riskLevel()),
@@ -113,17 +109,14 @@ public interface WebLogicAgent {
                 getBoolean(overrides, "confirmTargetOnImplicitReuse") != null
                         ? getBoolean(overrides, "confirmTargetOnImplicitReuse")
                         : baseContext.confirmTargetOnImplicitReuse(),
-                coalesceWorkflowString(getString(overrides, "constraints"), baseContext.constraints()),
+                coalesceNullableString(getString(overrides, "constraints"), baseContext.constraints()),
                 baseContext.memorySummary(),
-                coalesceWorkflowString(getString(overrides, "pendingIntent"), baseContext.pendingIntent()),
+                coalesceNullableString(getString(overrides, "pendingIntent"), baseContext.pendingIntent()),
                 getBoolean(overrides, "awaitingFollowUp") != null
                         ? getBoolean(overrides, "awaitingFollowUp")
                         : baseContext.awaitingFollowUp(),
-                coalesceWorkflowString(getString(overrides, "lastUserRequest"), baseContext.lastUserRequest()),
-                coalesceWorkflowString(getString(overrides, "lastAssistantQuestion"), baseContext.lastAssistantQuestion()),
-                coalesceWorkflowString(getString(overrides, "workflowType"), baseContext.workflowType()),
-                coalesceWorkflowString(getString(overrides, "workflowStep"), baseContext.workflowStep()),
-                coalesceWorkflowString(getString(overrides, "workflowStatus"), baseContext.workflowStatus()),
+                coalesceNullableString(getString(overrides, "lastUserRequest"), baseContext.lastUserRequest()),
+                coalesceNullableString(getString(overrides, "lastAssistantQuestion"), baseContext.lastAssistantQuestion()),
                 baseContext.failureReason());
     }
 
@@ -214,7 +207,7 @@ public interface WebLogicAgent {
         return preferred != null && !preferred.isEmpty() ? preferred : fallback;
     }
 
-    private static String coalesceWorkflowString(String override, String fallback) {
+    private static String coalesceNullableString(String override, String fallback) {
         if (override == null) {
             return fallback;
         }

@@ -26,9 +26,6 @@ public final class TaskContexts {
                 awaitingFollowUp: %s
                 lastUserRequest: %s
                 lastAssistantQuestion: %s
-                workflowType: %s
-                workflowStep: %s
-                workflowStatus: %s
                 """.formatted(
                 nz(safeContext.taskId()),
                 nz(safeContext.conversationId()),
@@ -47,10 +44,7 @@ public final class TaskContexts {
                 nz(safeContext.pendingIntent()),
                 safeContext.awaitingFollowUp() == null ? "" : safeContext.awaitingFollowUp(),
                 nz(safeContext.lastUserRequest()),
-                nz(safeContext.lastAssistantQuestion()),
-                nz(safeContext.workflowType()),
-                nz(safeContext.workflowStep()),
-                nz(safeContext.workflowStatus()));
+                nz(safeContext.lastAssistantQuestion()));
     }
 
     public static TaskContext clearPendingFollowUp(TaskContext context) {
@@ -74,9 +68,6 @@ public final class TaskContexts {
                 false,
                 safeContext.lastUserRequest(),
                 null,
-                safeContext.workflowType(),
-                safeContext.workflowStep(),
-                safeContext.workflowStatus(),
                 null);
     }
 

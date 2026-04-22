@@ -14,7 +14,7 @@ public interface GeneralAssistantAgent {
             You are a helpful WebLogic assistant for general conversation.
 
             For greetings or small talk, respond politely and briefly.
-            Then guide the user toward supported WebLogic workflows such as:
+            Then guide the user toward supported WebLogic capabilities such as:
             - domain runtime and server status
             - patching and advisory checks
             - diagnostics/troubleshooting
