@@ -12,6 +12,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class PatchingWorkflowCoordinatorTest {
 
@@ -135,10 +138,28 @@ class PatchingWorkflowCoordinatorTest {
         InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
+            com.example.wls.agentic.ai.DomainRuntimeAgent runtimeAgent = mock(com.example.wls.agentic.ai.DomainRuntimeAgent.class);
+            com.example.wls.agentic.ai.PatchingAgent patchingAgent = mock(com.example.wls.agentic.ai.PatchingAgent.class);
+            when(runtimeAgent.analyzeRequest(contains("Stop all servers")))
+                    .thenReturn("Stop initiated for host wlsoci12-wls-0 pid 111");
+            when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 111 on host wlsoci12-wls-0")))
+                    .thenReturn("The async job with PID 111 on host wlsoci12-wls-0 has completed successfully.");
+            when(runtimeAgent.analyzeRequest(contains("fully stopped"))).thenReturn("All servers fully stopped");
+            when(runtimeAgent.analyzeRequest(contains("Start all servers")))
+                    .thenReturn("Start initiated for host wlsoci12-wls-0 pid 333");
+            when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 333 on host wlsoci12-wls-0")))
+                    .thenReturn("The async job with PID 333 on host wlsoci12-wls-0 has completed successfully.");
+            when(runtimeAgent.analyzeRequest(contains("fully running"))).thenReturn("All servers fully running");
+            when(patchingAgent.analyzeRequest(contains("Apply recommended patches")))
+                    .thenReturn("Apply initiated for host wlsoci12-wls-0 pid 222");
+            when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 222 on host wlsoci12-wls-0")))
+                    .thenReturn("The async job with PID 222 on host wlsoci12-wls-0 has completed successfully.");
+            when(patchingAgent.analyzeRequest(contains("Verify domain"))).thenReturn("Verification successful");
+
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
-                    new WorkflowSupervisorAgent(),
+                    new WorkflowSupervisorAgent(runtimeAgent, patchingAgent),
                     executor);
 
             PatchingWorkflowProposalResult created = coordinator.createProposal(
@@ -166,10 +187,12 @@ class PatchingWorkflowCoordinatorTest {
         InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
+            com.example.wls.agentic.ai.DomainRuntimeAgent runtimeAgent = mock(com.example.wls.agentic.ai.DomainRuntimeAgent.class);
+            com.example.wls.agentic.ai.PatchingAgent patchingAgent = mock(com.example.wls.agentic.ai.PatchingAgent.class);
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
-                    new WorkflowSupervisorAgent(),
+                    new WorkflowSupervisorAgent(runtimeAgent, patchingAgent),
                     executor);
 
             PatchingWorkflowProposalResult created = coordinator.createProposal(

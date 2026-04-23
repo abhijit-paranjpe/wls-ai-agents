@@ -220,6 +220,13 @@ public class PatchingWorkflowCoordinator {
         }
 
         WorkflowRecord queued = maybeQueued.orElseThrow();
+        if (queued.currentState() != WorkflowStatus.QUEUED || queued.approvalDecision() != ApprovalDecision.APPROVE) {
+            workflowStateStore.update(withState(
+                    queued,
+                    WorkflowStatus.FAILED,
+                    "Workflow execution requires explicit APPROVE decision and QUEUED state."));
+            return;
+        }
         String domain = queued.domain();
         boolean lockAcquired = false;
         try {
