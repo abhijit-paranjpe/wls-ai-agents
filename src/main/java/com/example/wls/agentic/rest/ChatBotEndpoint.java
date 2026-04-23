@@ -126,6 +126,8 @@ public class ChatBotEndpoint {
                     context.awaitingFollowUp(),
                     context.lastUserRequest(),
                     context.lastAssistantQuestion(),
+                    context.activeWorkflowIds(),
+                    context.lastReferencedWorkflowId(),
                     context.failureReason());
         }
 
@@ -310,6 +312,8 @@ public class ChatBotEndpoint {
                 getBoolean(taskContextObject, "awaitingFollowUp"),
                 getString(taskContextObject, "lastUserRequest"),
                 getString(taskContextObject, "lastAssistantQuestion"),
+                getStringList(taskContextObject, "activeWorkflowIds"),
+                getString(taskContextObject, "lastReferencedWorkflowId"),
                 null);
     }
 
@@ -337,6 +341,8 @@ public class ChatBotEndpoint {
                 || obj.containsKey("awaitingFollowUp")
                 || obj.containsKey("lastUserRequest")
                 || obj.containsKey("lastAssistantQuestion")
+                || obj.containsKey("activeWorkflowIds")
+                || obj.containsKey("lastReferencedWorkflowId")
                 || obj.containsKey("failureReason");
     }
 
@@ -460,6 +466,8 @@ public class ChatBotEndpoint {
                 incoming.awaitingFollowUp() != null ? incoming.awaitingFollowUp() : persisted.awaitingFollowUp(),
                 firstNonBlank(incoming.lastUserRequest(), persisted.lastUserRequest()),
                 firstNonBlank(incoming.lastAssistantQuestion(), persisted.lastAssistantQuestion()),
+                firstNonEmptyList(incoming.activeWorkflowIds(), persisted.activeWorkflowIds()),
+                firstNonBlank(incoming.lastReferencedWorkflowId(), persisted.lastReferencedWorkflowId()),
                 firstNonBlank(incoming.failureReason(), persisted.failureReason()));
     }
 
@@ -531,6 +539,8 @@ public class ChatBotEndpoint {
                 false,
                 current.lastUserRequest(),
                 null,
+                current.activeWorkflowIds(),
+                current.lastReferencedWorkflowId(),
                 null);
     }
 
@@ -1140,6 +1150,8 @@ public class ChatBotEndpoint {
                 context.awaitingFollowUp(),
                 truncate(context.lastUserRequest(), MAX_CONSTRAINTS_CHARS),
                 truncate(context.lastAssistantQuestion(), MAX_CONSTRAINTS_CHARS),
+                context.activeWorkflowIds(),
+                context.lastReferencedWorkflowId(),
                 context.failureReason());
     }
 
@@ -1161,5 +1173,22 @@ public class ChatBotEndpoint {
             }
         }
         return result.isEmpty() ? null : result;
+    }
+
+    private static java.util.List<String> getStringList(JsonObject object, String key) {
+        if (object == null || key == null || !object.containsKey(key) || object.isNull(key)) {
+            return null;
+        }
+        java.util.List<String> values = object.getJsonArray(key).stream()
+                .filter(item -> item != null && item.getValueType() == JsonValue.ValueType.STRING)
+                .map(item -> ((JsonString) item).getString())
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+        return values.isEmpty() ? null : values;
+    }
+
+    private static java.util.List<String> firstNonEmptyList(java.util.List<String> preferred,
+                                                            java.util.List<String> fallback) {
+        return preferred != null && !preferred.isEmpty() ? preferred : fallback;
     }
 }

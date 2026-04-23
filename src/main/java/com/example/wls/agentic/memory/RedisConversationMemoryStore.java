@@ -10,6 +10,7 @@ import redis.clients.jedis.JedisPooled;
 
 import java.io.StringReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -67,6 +68,8 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                     getBoolean(o, "awaitingFollowUp"),
                     getString(o, "lastUserRequest"),
                     getString(o, "lastAssistantQuestion"),
+                    getStringList(o, "activeWorkflowIds"),
+                    getString(o, "lastReferencedWorkflowId"),
                     getString(o, "failureReason")));
         } catch (RuntimeException e) {
             return Optional.empty();
@@ -101,11 +104,13 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                 .add("pendingIntent", safe(taskContext.pendingIntent()))
                 .add("lastUserRequest", safe(taskContext.lastUserRequest()))
                 .add("lastAssistantQuestion", safe(taskContext.lastAssistantQuestion()))
+                .add("lastReferencedWorkflowId", safe(taskContext.lastReferencedWorkflowId()))
                 .add("failureReason", safe(taskContext.failureReason()));
         addNullableBoolean(builder, "approvalRequired", taskContext.approvalRequired());
         addNullableBoolean(builder, "confirmTargetOnImplicitReuse", taskContext.confirmTargetOnImplicitReuse());
         addNullableBoolean(builder, "awaitingFollowUp", taskContext.awaitingFollowUp());
         addNullableStringMap(builder, "hostPids", taskContext.hostPids());
+        addNullableStringList(builder, "activeWorkflowIds", taskContext.activeWorkflowIds());
         JsonObject json = builder.build();
         jedis.setex(TASK_CONTEXT_KEY_PREFIX + conversationId, ttlSeconds, json.toString());
     }
@@ -136,6 +141,15 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
         builder.add(key, mapBuilder.build());
     }
 
+    private static void addNullableStringList(JsonObjectBuilder builder, String key, List<String> value) {
+        if (value == null || value.isEmpty()) {
+            return;
+        }
+        var listBuilder = Json.createArrayBuilder();
+        value.stream().filter(v -> v != null && !v.isBlank()).forEach(listBuilder::add);
+        builder.add(key, listBuilder.build());
+    }
+
     private static Map<String, String> getStringMap(JsonObject object) {
         if (object == null) {
             return null;
@@ -147,6 +161,18 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
             }
         }
         return result.isEmpty() ? null : result;
+    }
+
+    private static List<String> getStringList(JsonObject object, String key) {
+        if (object == null || key == null || !object.containsKey(key) || object.isNull(key)) {
+            return null;
+        }
+        List<String> values = object.getJsonArray(key).stream()
+                .filter(item -> item != null && item.getValueType() == jakarta.json.JsonValue.ValueType.STRING)
+                .map(item -> ((jakarta.json.JsonString) item).getString())
+                .filter(v -> v != null && !v.isBlank())
+                .toList();
+        return values.isEmpty() ? null : values;
     }
 
     private static String safe(String value) {

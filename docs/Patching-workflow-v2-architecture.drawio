@@ -1,0 +1,179 @@
+<mxfile host="65bd71144e">
+    <diagram id="patching-workflow-v2-arch" name="Patching Workflow v2 Architecture">
+        <mxGraphModel dx="1674" dy="802" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1400" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="2" value="WebLogic Patching Workflow v2: Explicit HITL Agentic Architecture" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=24;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="420" y="20" width="1360" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="3" value="Inspired by agentic-chess: @SequenceAgent workflow + @HumanInTheLoop approval + deterministic semaphore/state services" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=14;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="60" width="1480" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="10" value="User / Operator&#xa;(Chat / UI / API)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="250" width="220" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="11" value="ChatBotEndpoint&#xa;POST /chat&#xa;approval submission + status query entrypoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#15803d;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="300" y="235" width="260" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="12" value="WebLogicAgent&#xa;top-level orchestrator&#xa;Classifier → Router → Specialist → Summarizer" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontSize=14;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="620" y="235" width="270" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="13" value="RequestClassifierAgent&#xa;classifies PATCHING intent" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="160" width="230" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="14" value="RequestRouterAgent&#xa;routes patching proposal / approval / status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="285" width="230" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="15" value="SummarizerAgent&#xa;compresses continuity for future turns" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="1" vertex="1">
+                    <mxGeometry x="930" y="410" width="230" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="20" value="PatchingWorkflowAgent (@SequenceAgent)" style="swimlane;rounded=1;html=1;fillColor=#dbeafe;strokeColor=#1d4ed8;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1210" y="110" width="860" height="520" as="geometry"/>
+                </mxCell>
+                <mxCell id="21" value="PatchingAgent&#xa;(proposal mode)&#xa;build patch plan / patch scope / risk summary" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
+                    <mxGeometry x="30" y="70" width="220" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="22" value="HumanApprovalAgent&#xa;@HumanInTheLoop&#xa;collect APPROVE / REJECT / CANCEL" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fae8ff;strokeColor=#a21caf;fontSize=13;fontStyle=1;" parent="20" vertex="1">
+                    <mxGeometry x="300" y="60" width="250" height="130" as="geometry"/>
+                </mxCell>
+                <mxCell id="23" value="PatchingWorkflowOutcomeRouterAgent&#xa;approved / rejected / cancelled / clarification" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f3ff;strokeColor=#7c3aed;fontSize=13;" parent="20" vertex="1">
+                    <mxGeometry x="600" y="70" width="240" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="24" value="WorkflowSupervisorAgent&#xa;execution orchestration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;fontStyle=1;" parent="20" vertex="1">
+                    <mxGeometry x="590" y="270" width="260" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="25" value="DomainRuntimeAgent&#xa;stop / start servers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
+                    <mxGeometry x="90" y="390" width="220" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="26" value="PatchingAgent&#xa;(execution mode)&#xa;apply / verify patches" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e0f2fe;strokeColor=#0369a1;fontSize=13;" parent="20" vertex="1">
+                    <mxGeometry x="360" y="400" width="200" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="110" value="proposal" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="20" source="21" target="22" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="111" value="approval decision" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="20" source="22" target="23" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="112" value="APPROVED only" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="20" source="23" target="24" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="113" value="stop / start" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0;exitY=0.25;exitDx=0;exitDy=0;" parent="20" source="24" target="25" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="114" value="apply / verify" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;exitX=0;exitY=0.75;exitDx=0;exitDy=0;" parent="20" source="24" target="26" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="590" y="340"/>
+                            <mxPoint x="460" y="340"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="140" value="Approved path" style="text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;" parent="20" vertex="1">
+                    <mxGeometry x="655" y="185" width="100" height="20" as="geometry"/>
+                </mxCell>
+                <mxCell id="30" value="WorkflowApprovalSemaphore&#xa;awaitDecision / submitDecision / cancel" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1320" y="690" width="260" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="31" value="PatchingWorkflowCoordinator&#xa;create / persist / queue / cancel / resume" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1610" y="761" width="270" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="32" value="WorkflowStateStore&#xa;authoritative workflow state + step history" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="2000" y="710" width="190" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="33" value="DomainLockManager&#xa;one active patch execution per domain" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="2000" y="820" width="180" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="34" value="PatchingWorkflowStateKeys&#xa;PROPOSAL_KEY&#xa;APPROVAL_DECISION_KEY&#xa;WORKFLOW_RESULT_KEY ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#b45309;fontSize=12;" parent="1" vertex="1">
+                    <mxGeometry x="1420" y="930" width="280" height="120" as="geometry"/>
+                </mxCell>
+                <mxCell id="35" value="MCP Tool Layer&#xa;runtime ops + patch ops" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fde68a;strokeColor=#b45309;fontSize=13;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="780" y="790" width="260" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="100" value="request / approval / status" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="10" target="11" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="101" value="invoke chat(...)" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="11" target="12" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="102" value="intent" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="12" target="13" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="103" value="route patching" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="13" target="14" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="104" value="start / resume workflow" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;" parent="1" source="14" target="20" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="105" value="summary" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;" parent="1" source="20" target="15" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1170" y="520"/>
+                            <mxPoint x="1045" y="520"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="120" value="await / resume / cancel" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;strokeColor=#b45309;" parent="1" source="22" target="30" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1635" y="340"/>
+                            <mxPoint x="1540" y="340"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="121" value="submit approval decision" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;strokeColor=#b45309;" parent="1" source="11" target="30" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="430" y="740"/>
+                            <mxPoint x="1420" y="740"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="122" value="create / update / cancel / queue" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;strokeColor=#b45309;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="14" target="31" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1240" y="330"/>
+                            <mxPoint x="1240" y="816"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="123" value="persist workflow / steps" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;strokeColor=#b45309;entryX=0;entryY=0.5;entryDx=0;entryDy=0;exitX=1;exitY=0.25;exitDx=0;exitDy=0;" parent="1" source="31" target="32" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="124" value="acquire / release domain lock" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;html=1;strokeColor=#b45309;exitX=1;exitY=0.75;exitDx=0;exitDy=0;" parent="1" source="31" target="33" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="125" value="shared workflow state keys" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;strokeColor=#b45309;" parent="1" source="34" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1590" y="630"/>
+                        </Array>
+                        <mxPoint x="1590" y="630" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="130" value="runtime ops" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;strokeColor=#b45309;" parent="1" source="25" target="35" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1410" y="620"/>
+                            <mxPoint x="950" y="620"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="131" value="patch ops" style="edgeStyle=orthogonalEdgeStyle;dashed=1;endArrow=block;endFill=1;html=1;strokeColor=#b45309;" parent="1" source="26" target="35" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="1560" y="680"/>
+                            <mxPoint x="980" y="680"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="141" value="Deterministic services" style="text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="1600" y="640" width="250" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="142" value="MCP-backed execution" style="text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;" parent="1" vertex="1">
+                    <mxGeometry x="850" y="650" width="210" height="30" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
