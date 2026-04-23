@@ -126,9 +126,56 @@ public class PatchingWorkflowCoordinator {
                 .toList();
     }
 
+    public Optional<WorkflowRecord> applyApprovalDecision(String workflowId,
+                                                          ApprovalDecision decision,
+                                                          WorkflowChannel channel) {
+        validateWorkflowId(workflowId);
+        Objects.requireNonNull(decision, "decision must not be null");
+        Objects.requireNonNull(channel, "channel must not be null");
+
+        Optional<WorkflowRecord> existing = workflowStateStore.getByWorkflowId(workflowId);
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+
+        WorkflowRecord current = existing.orElseThrow();
+        if (current.currentState() != WorkflowStatus.AWAITING_APPROVAL) {
+            return Optional.empty();
+        }
+
+        WorkflowStatus nextStatus = switch (decision) {
+            case APPROVE -> WorkflowStatus.APPROVED;
+            case REJECT -> WorkflowStatus.REJECTED;
+            case CANCEL -> WorkflowStatus.CANCELLED;
+        };
+
+        WorkflowRecord updated = new WorkflowRecord(
+                current.workflowId(),
+                current.domain(),
+                nextStatus,
+                current.createdAt(),
+                Instant.now(),
+                current.conversationId(),
+                current.taskId(),
+                current.requestSummary(),
+                decision,
+                Instant.now(),
+                channel,
+                current.failureReason(),
+                current.steps());
+
+        return Optional.of(workflowStateStore.update(updated));
+    }
+
     private static void validateDomain(String domain) {
         if (domain == null || domain.isBlank()) {
             throw new IllegalArgumentException("domain must not be blank");
+        }
+    }
+
+    private static void validateWorkflowId(String workflowId) {
+        if (workflowId == null || workflowId.isBlank()) {
+            throw new IllegalArgumentException("workflowId must not be blank");
         }
     }
 }
