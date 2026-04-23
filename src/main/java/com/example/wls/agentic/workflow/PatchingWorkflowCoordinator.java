@@ -1,5 +1,6 @@
 package com.example.wls.agentic.workflow;
 
+import com.example.wls.agentic.ai.WorkflowSupervisorAgent;
 import io.helidon.service.registry.Service;
 
 import java.time.Instant;
@@ -8,6 +9,8 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Service.Singleton
 public class PatchingWorkflowCoordinator {
@@ -18,10 +21,35 @@ public class PatchingWorkflowCoordinator {
             WorkflowStatus.IN_EXECUTION);
 
     private final WorkflowStateStore workflowStateStore;
+    private final DomainLockManager domainLockManager;
+    private final WorkflowSupervisorAgent workflowSupervisorAgent;
+    private final ExecutorService workflowExecutor;
 
     @Service.Inject
+    public PatchingWorkflowCoordinator(WorkflowStateStore workflowStateStore,
+                                       DomainLockManager domainLockManager,
+                                       WorkflowSupervisorAgent workflowSupervisorAgent) {
+        this(workflowStateStore,
+                domainLockManager,
+                workflowSupervisorAgent,
+                Executors.newCachedThreadPool());
+    }
+
     public PatchingWorkflowCoordinator(WorkflowStateStore workflowStateStore) {
+        this(workflowStateStore,
+                new InMemoryDomainLockManager(),
+                new WorkflowSupervisorAgent(),
+                Executors.newCachedThreadPool());
+    }
+
+    PatchingWorkflowCoordinator(WorkflowStateStore workflowStateStore,
+                                DomainLockManager domainLockManager,
+                                WorkflowSupervisorAgent workflowSupervisorAgent,
+                                ExecutorService workflowExecutor) {
         this.workflowStateStore = Objects.requireNonNull(workflowStateStore, "workflowStateStore must not be null");
+        this.domainLockManager = Objects.requireNonNull(domainLockManager, "domainLockManager must not be null");
+        this.workflowSupervisorAgent = Objects.requireNonNull(workflowSupervisorAgent, "workflowSupervisorAgent must not be null");
+        this.workflowExecutor = Objects.requireNonNull(workflowExecutor, "workflowExecutor must not be null");
     }
 
     public PatchingWorkflowProposalResult createProposal(String domain,
@@ -165,6 +193,76 @@ public class PatchingWorkflowCoordinator {
                 current.steps());
 
         return Optional.of(workflowStateStore.update(updated));
+    }
+
+    public Optional<WorkflowRecord> submitApprovedWorkflowForExecution(String workflowId) {
+        validateWorkflowId(workflowId);
+
+        Optional<WorkflowRecord> existing = workflowStateStore.getByWorkflowId(workflowId);
+        if (existing.isEmpty()) {
+            return Optional.empty();
+        }
+
+        WorkflowRecord current = existing.orElseThrow();
+        if (current.currentState() != WorkflowStatus.APPROVED) {
+            return Optional.empty();
+        }
+
+        WorkflowRecord queued = workflowStateStore.update(withState(current, WorkflowStatus.QUEUED, null));
+        workflowExecutor.submit(() -> executeQueuedWorkflow(queued.workflowId()));
+        return Optional.of(queued);
+    }
+
+    private void executeQueuedWorkflow(String workflowId) {
+        Optional<WorkflowRecord> maybeQueued = workflowStateStore.getByWorkflowId(workflowId);
+        if (maybeQueued.isEmpty()) {
+            return;
+        }
+
+        WorkflowRecord queued = maybeQueued.orElseThrow();
+        String domain = queued.domain();
+        boolean lockAcquired = false;
+        try {
+            if (!domainLockManager.acquire(domain, workflowId)) {
+                String owner = domainLockManager.lockOwner(domain);
+                workflowStateStore.update(withState(
+                        queued,
+                        WorkflowStatus.FAILED,
+                        "Domain lock is already held for domain '" + domain + "' by workflow '" + owner + "'."));
+                return;
+            }
+            lockAcquired = true;
+
+            WorkflowRecord inExecution = workflowStateStore.update(withState(queued, WorkflowStatus.IN_EXECUTION, null));
+            workflowSupervisorAgent.execute(inExecution);
+            workflowStateStore.update(withState(inExecution, WorkflowStatus.COMPLETED, null));
+        } catch (RuntimeException ex) {
+            WorkflowRecord latest = workflowStateStore.getByWorkflowId(workflowId).orElse(queued);
+            workflowStateStore.update(withState(latest, WorkflowStatus.FAILED, ex.getMessage()));
+        } finally {
+            if (lockAcquired) {
+                domainLockManager.release(domain, workflowId);
+            }
+        }
+    }
+
+    private static WorkflowRecord withState(WorkflowRecord current,
+                                            WorkflowStatus nextStatus,
+                                            String failureReason) {
+        return new WorkflowRecord(
+                current.workflowId(),
+                current.domain(),
+                nextStatus,
+                current.createdAt(),
+                Instant.now(),
+                current.conversationId(),
+                current.taskId(),
+                current.requestSummary(),
+                current.approvalDecision(),
+                current.approvalDecisionAt(),
+                current.approvalChannel(),
+                failureReason,
+                current.steps());
     }
 
     private static void validateDomain(String domain) {
