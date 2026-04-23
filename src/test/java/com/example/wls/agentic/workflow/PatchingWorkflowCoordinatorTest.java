@@ -101,4 +101,27 @@ class PatchingWorkflowCoordinatorTest {
         assertEquals(1, inExecution.size());
         assertEquals(created.workflowId(), inExecution.get(0).workflowId());
     }
+
+    @Test
+    void applyApprovalDecisionUpdatesStateAndMetadata() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        PatchingWorkflowProposalResult created = coordinator.createProposal(
+                "payments-prod",
+                "conv-1",
+                "task-1",
+                "request");
+
+        WorkflowRecord approved = coordinator.applyApprovalDecision(
+                        created.workflowId(),
+                        ApprovalDecision.APPROVE,
+                        WorkflowChannel.API)
+                .orElseThrow();
+
+        assertEquals(WorkflowStatus.APPROVED, approved.currentState());
+        assertEquals(ApprovalDecision.APPROVE, approved.approvalDecision());
+        assertEquals(WorkflowChannel.API, approved.approvalChannel());
+        assertNotNull(approved.approvalDecisionAt());
+    }
 }
