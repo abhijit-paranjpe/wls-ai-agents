@@ -9,6 +9,7 @@ import io.helidon.config.Config;
 import org.bson.Document;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -73,7 +74,8 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 getBoolean(t, "awaitingFollowUp"),
                 t.getString("lastUserRequest"),
                 t.getString("lastAssistantQuestion"),
-                t.getString("activeWorkflowId"),
+                getStringList(t, "activeWorkflowIds"),
+                t.getString("lastReferencedWorkflowId"),
                 t.getString("failureReason")));
     }
 
@@ -111,7 +113,8 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 .append("awaitingFollowUp", taskContext.awaitingFollowUp())
                 .append("lastUserRequest", taskContext.lastUserRequest())
                 .append("lastAssistantQuestion", taskContext.lastAssistantQuestion())
-                .append("activeWorkflowId", taskContext.activeWorkflowId())
+                .append("activeWorkflowIds", taskContext.activeWorkflowIds())
+                .append("lastReferencedWorkflowId", taskContext.lastReferencedWorkflowId())
                 .append("failureReason", taskContext.failureReason());
         if (taskContext.hostPids() != null && !taskContext.hostPids().isEmpty()) {
             contextDoc.append("hostPids", new Document(taskContext.hostPids()));
@@ -134,6 +137,19 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
         for (Map.Entry<String, Object> entry : document.entrySet()) {
             result.put(entry.getKey(), entry.getValue() == null ? "" : String.valueOf(entry.getValue()));
         }
+        return result.isEmpty() ? null : result;
+    }
+
+    private static List<String> getStringList(Document document, String key) {
+        Object value = document.get(key);
+        if (!(value instanceof List<?> values) || values.isEmpty()) {
+            return null;
+        }
+        List<String> result = values.stream()
+                .filter(item -> item != null)
+                .map(String::valueOf)
+                .filter(v -> !v.isBlank())
+                .toList();
         return result.isEmpty() ? null : result;
     }
 }

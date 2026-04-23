@@ -9,6 +9,7 @@ import io.helidon.integrations.langchain4j.Ai;
 
 import java.io.StringReader;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -117,7 +118,8 @@ public interface WebLogicAgent {
                         : baseContext.awaitingFollowUp(),
                 coalesceNullableString(getString(overrides, "lastUserRequest"), baseContext.lastUserRequest()),
                 coalesceNullableString(getString(overrides, "lastAssistantQuestion"), baseContext.lastAssistantQuestion()),
-                coalesceNullableString(getString(overrides, "activeWorkflowId"), baseContext.activeWorkflowId()),
+                firstNonEmptyList(getStringList(overrides, "activeWorkflowIds"), baseContext.activeWorkflowIds()),
+                coalesceNullableString(getString(overrides, "lastReferencedWorkflowId"), baseContext.lastReferencedWorkflowId()),
                 baseContext.failureReason());
     }
 
@@ -200,11 +202,26 @@ public interface WebLogicAgent {
         return values.isEmpty() ? null : values;
     }
 
+    private static List<String> getStringList(JsonObject object, String key) {
+        if (object == null || key == null || !object.containsKey(key) || object.isNull(key)) {
+            return null;
+        }
+        return object.getJsonArray(key).stream()
+                .filter(item -> item != null && item.getValueType() == jakarta.json.JsonValue.ValueType.STRING)
+                .map(item -> ((jakarta.json.JsonString) item).getString())
+                .filter(value -> value != null && !value.isBlank())
+                .toList();
+    }
+
     private static String firstNonBlank(String preferred, String fallback) {
         return preferred != null && !preferred.isBlank() ? preferred : fallback;
     }
 
     private static Map<String, String> firstNonEmptyMap(Map<String, String> preferred, Map<String, String> fallback) {
+        return preferred != null && !preferred.isEmpty() ? preferred : fallback;
+    }
+
+    private static List<String> firstNonEmptyList(List<String> preferred, List<String> fallback) {
         return preferred != null && !preferred.isEmpty() ? preferred : fallback;
     }
 
