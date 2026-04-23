@@ -1,8 +1,12 @@
 package com.example.wls.agentic.workflow;
 
+import com.example.wls.agentic.ai.WorkflowSupervisorAgent;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -123,5 +127,83 @@ class PatchingWorkflowCoordinatorTest {
         assertEquals(ApprovalDecision.APPROVE, approved.approvalDecision());
         assertEquals(WorkflowChannel.API, approved.approvalChannel());
         assertNotNull(approved.approvalDecisionAt());
+    }
+
+    @Test
+    void submitApprovedWorkflowForExecutionTransitionsToCompletedAndReleasesLock() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
+                    store,
+                    lockManager,
+                    new WorkflowSupervisorAgent(),
+                    executor);
+
+            PatchingWorkflowProposalResult created = coordinator.createProposal(
+                    "payments-prod",
+                    "conv-1",
+                    "task-1",
+                    "request");
+
+            coordinator.applyApprovalDecision(created.workflowId(), ApprovalDecision.APPROVE, WorkflowChannel.API);
+
+            WorkflowRecord queued = coordinator.submitApprovedWorkflowForExecution(created.workflowId()).orElseThrow();
+            assertEquals(WorkflowStatus.QUEUED, queued.currentState());
+
+            WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
+            assertEquals(WorkflowStatus.COMPLETED, terminal.currentState());
+            assertFalse(lockManager.isLocked("payments-prod"));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void submitApprovedWorkflowForExecutionFailureMarksFailedAndReleasesLock() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
+                    store,
+                    lockManager,
+                    new WorkflowSupervisorAgent(),
+                    executor);
+
+            PatchingWorkflowProposalResult created = coordinator.createProposal(
+                    "payments-prod",
+                    "conv-1",
+                    "task-1",
+                    "FORCE_FAIL");
+
+            coordinator.applyApprovalDecision(created.workflowId(), ApprovalDecision.APPROVE, WorkflowChannel.API);
+            coordinator.submitApprovedWorkflowForExecution(created.workflowId());
+
+            WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
+            assertEquals(WorkflowStatus.FAILED, terminal.currentState());
+            assertFalse(lockManager.isLocked("payments-prod"));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private static WorkflowRecord waitForTerminalState(PatchingWorkflowCoordinator coordinator, String workflowId) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        WorkflowRecord latest = coordinator.getByWorkflowId(workflowId).orElseThrow();
+        while (System.nanoTime() < deadline) {
+            latest = coordinator.getByWorkflowId(workflowId).orElseThrow();
+            if (latest.currentState() == WorkflowStatus.COMPLETED || latest.currentState() == WorkflowStatus.FAILED) {
+                return latest;
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        return latest;
     }
 }

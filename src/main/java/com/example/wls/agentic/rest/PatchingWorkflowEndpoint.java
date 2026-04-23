@@ -3,6 +3,7 @@ package com.example.wls.agentic.rest;
 import com.example.wls.agentic.dto.ApprovalRequest;
 import com.example.wls.agentic.dto.ApprovalResponse;
 import com.example.wls.agentic.dto.WorkflowSummaryListResponse;
+import com.example.wls.agentic.workflow.ApprovalDecision;
 import com.example.wls.agentic.workflow.PatchingWorkflowCoordinator;
 import com.example.wls.agentic.workflow.WorkflowApprovalSemaphore;
 import com.example.wls.agentic.workflow.WorkflowChannel;
@@ -48,6 +49,10 @@ public class PatchingWorkflowEndpoint {
                 "workflow not found or not awaiting approval: " + workflowId));
 
         approvalSemaphore.submitDecision(workflow.workflowId(), request.decision());
+
+        if (request.decision() == ApprovalDecision.APPROVE) {
+            coordinator.submitApprovedWorkflowForExecution(workflow.workflowId());
+        }
 
         return new ApprovalResponse(
                 workflow.workflowId(),
