@@ -73,6 +73,7 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 getBoolean(t, "awaitingFollowUp"),
                 t.getString("lastUserRequest"),
                 t.getString("lastAssistantQuestion"),
+                t.getString("activeWorkflowId"),
                 t.getString("failureReason")));
     }
 
@@ -110,6 +111,7 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 .append("awaitingFollowUp", taskContext.awaitingFollowUp())
                 .append("lastUserRequest", taskContext.lastUserRequest())
                 .append("lastAssistantQuestion", taskContext.lastAssistantQuestion())
+                .append("activeWorkflowId", taskContext.activeWorkflowId())
                 .append("failureReason", taskContext.failureReason());
         if (taskContext.hostPids() != null && !taskContext.hostPids().isEmpty()) {
             contextDoc.append("hostPids", new Document(taskContext.hostPids()));

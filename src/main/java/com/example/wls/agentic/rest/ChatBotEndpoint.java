@@ -126,6 +126,7 @@ public class ChatBotEndpoint {
                     context.awaitingFollowUp(),
                     context.lastUserRequest(),
                     context.lastAssistantQuestion(),
+                    context.activeWorkflowId(),
                     context.failureReason());
         }
 
@@ -310,6 +311,7 @@ public class ChatBotEndpoint {
                 getBoolean(taskContextObject, "awaitingFollowUp"),
                 getString(taskContextObject, "lastUserRequest"),
                 getString(taskContextObject, "lastAssistantQuestion"),
+                getString(taskContextObject, "activeWorkflowId"),
                 null);
     }
 
@@ -337,6 +339,7 @@ public class ChatBotEndpoint {
                 || obj.containsKey("awaitingFollowUp")
                 || obj.containsKey("lastUserRequest")
                 || obj.containsKey("lastAssistantQuestion")
+                || obj.containsKey("activeWorkflowId")
                 || obj.containsKey("failureReason");
     }
 
@@ -460,6 +463,7 @@ public class ChatBotEndpoint {
                 incoming.awaitingFollowUp() != null ? incoming.awaitingFollowUp() : persisted.awaitingFollowUp(),
                 firstNonBlank(incoming.lastUserRequest(), persisted.lastUserRequest()),
                 firstNonBlank(incoming.lastAssistantQuestion(), persisted.lastAssistantQuestion()),
+                firstNonBlank(incoming.activeWorkflowId(), persisted.activeWorkflowId()),
                 firstNonBlank(incoming.failureReason(), persisted.failureReason()));
     }
 
@@ -531,6 +535,7 @@ public class ChatBotEndpoint {
                 false,
                 current.lastUserRequest(),
                 null,
+                current.activeWorkflowId(),
                 null);
     }
 
@@ -1140,6 +1145,7 @@ public class ChatBotEndpoint {
                 context.awaitingFollowUp(),
                 truncate(context.lastUserRequest(), MAX_CONSTRAINTS_CHARS),
                 truncate(context.lastAssistantQuestion(), MAX_CONSTRAINTS_CHARS),
+                context.activeWorkflowId(),
                 context.failureReason());
     }
 

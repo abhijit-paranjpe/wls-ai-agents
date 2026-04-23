@@ -117,6 +117,7 @@ public interface WebLogicAgent {
                         : baseContext.awaitingFollowUp(),
                 coalesceNullableString(getString(overrides, "lastUserRequest"), baseContext.lastUserRequest()),
                 coalesceNullableString(getString(overrides, "lastAssistantQuestion"), baseContext.lastAssistantQuestion()),
+                coalesceNullableString(getString(overrides, "activeWorkflowId"), baseContext.activeWorkflowId()),
                 baseContext.failureReason());
     }
 

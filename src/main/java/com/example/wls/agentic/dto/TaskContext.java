@@ -24,6 +24,7 @@ public record TaskContext(
         Boolean awaitingFollowUp,
         String lastUserRequest,
         String lastAssistantQuestion,
+        String activeWorkflowId,
         String failureReason) {
 
     public static TaskContext empty() {
@@ -46,55 +47,56 @@ public record TaskContext(
                 null,
                 null,
                 null,
+                null,
                 null);
     }
 
     public TaskContext withMemorySummary(String newMemorySummary) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, newMemorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withIntent(String newIntent) {
         return new TaskContext(taskId, conversationId, userId, newIntent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withConversationId(String newConversationId) {
         return new TaskContext(taskId, newConversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withTargetDomain(String newTargetDomain) {
         return new TaskContext(taskId, conversationId, userId, intent, newTargetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withTargetServers(String newTargetServers) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, newTargetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withTargetHosts(String newTargetHosts) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, newTargetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withHostPids(Map<String, String> newHostPids) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, newHostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withLastUserRequest(String newLastUserRequest) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, newLastUserRequest, lastAssistantQuestion, failureReason);
+                pendingIntent, awaitingFollowUp, newLastUserRequest, lastAssistantQuestion, activeWorkflowId, failureReason);
     }
 
     public TaskContext withPendingFollowUp(String newPendingIntent,
@@ -102,12 +104,18 @@ public record TaskContext(
                                            String newLastAssistantQuestion) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                newPendingIntent, newAwaitingFollowUp, lastUserRequest, newLastAssistantQuestion, failureReason);
+                newPendingIntent, newAwaitingFollowUp, lastUserRequest, newLastAssistantQuestion, activeWorkflowId, failureReason);
+    }
+
+    public TaskContext withActiveWorkflowId(String newActiveWorkflowId) {
+        return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
+                environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, newActiveWorkflowId, failureReason);
     }
 
     public TaskContext withFailureReason(String newFailureReason) {
         return new TaskContext(taskId, conversationId, userId, intent, targetDomain, targetServers, targetHosts, hostPids,
                 environment, riskLevel, approvalRequired, confirmTargetOnImplicitReuse, constraints, memorySummary,
-                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, newFailureReason);
+                pendingIntent, awaitingFollowUp, lastUserRequest, lastAssistantQuestion, activeWorkflowId, newFailureReason);
     }
 }

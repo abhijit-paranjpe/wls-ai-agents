@@ -67,6 +67,7 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                     getBoolean(o, "awaitingFollowUp"),
                     getString(o, "lastUserRequest"),
                     getString(o, "lastAssistantQuestion"),
+                    getString(o, "activeWorkflowId"),
                     getString(o, "failureReason")));
         } catch (RuntimeException e) {
             return Optional.empty();
@@ -101,6 +102,7 @@ public class RedisConversationMemoryStore implements ConversationMemoryStore {
                 .add("pendingIntent", safe(taskContext.pendingIntent()))
                 .add("lastUserRequest", safe(taskContext.lastUserRequest()))
                 .add("lastAssistantQuestion", safe(taskContext.lastAssistantQuestion()))
+                .add("activeWorkflowId", safe(taskContext.activeWorkflowId()))
                 .add("failureReason", safe(taskContext.failureReason()));
         addNullableBoolean(builder, "approvalRequired", taskContext.approvalRequired());
         addNullableBoolean(builder, "confirmTargetOnImplicitReuse", taskContext.confirmTargetOnImplicitReuse());
