@@ -174,7 +174,7 @@ public class PatchingWorkflowCoordinator {
         WorkflowStatus nextStatus = switch (decision) {
             case APPROVE -> WorkflowStatus.APPROVED;
             case REJECT -> WorkflowStatus.REJECTED;
-            case CANCEL -> WorkflowStatus.CANCELLED;
+            case CANCEL -> WorkflowStatus.REJECTED;
         };
 
         WorkflowRecord updated = new WorkflowRecord(

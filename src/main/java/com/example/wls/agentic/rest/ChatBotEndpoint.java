@@ -4,6 +4,8 @@ import com.example.wls.agentic.ai.DomainRuntimeAgent;
 import com.example.wls.agentic.ai.PatchingAgent;
 import com.example.wls.agentic.ai.WebLogicAgent;
 import com.example.wls.agentic.dto.AgentResponse;
+import com.example.wls.agentic.dto.ResponseAction;
+import com.example.wls.agentic.dto.ResponseMetadata;
 import com.example.wls.agentic.dto.TaskContext;
 import com.example.wls.agentic.dto.TaskContexts;
 import com.example.wls.agentic.memory.ConversationMemoryService;
@@ -14,6 +16,7 @@ import com.example.wls.agentic.workflow.PatchingWorkflowProposalResult;
 import com.example.wls.agentic.workflow.WorkflowApprovalSemaphore;
 import com.example.wls.agentic.workflow.WorkflowChannel;
 import com.example.wls.agentic.workflow.WorkflowRecord;
+import com.example.wls.agentic.workflow.WorkflowStepRecord;
 import com.example.wls.agentic.workflow.WorkflowStatus;
 import com.example.wls.agentic.workflow.WorkflowSummary;
 import dev.langchain4j.data.message.AiMessage;
@@ -83,7 +86,6 @@ public class ChatBotEndpoint {
 
     private static final Pattern PID_PATTERN = Pattern.compile("(?i)\\bpid\\s*[:=]?\\s*(\\d+)\\b");
     private static final Pattern HOST_PATTERN = Pattern.compile("(?i)\\bhost\\s*[:=]?\\s*([A-Za-z0-9._-]+)\\b");
-
     private final WebLogicAgent agent;
     private final ConversationMemoryService conversationMemoryService;
     private final ManagedDomainCacheService managedDomainCacheService;
@@ -209,14 +211,18 @@ public class ChatBotEndpoint {
                     conversationTranscript,
                     TaskContexts.toPromptContext(compactedContext),
                     compactedContext);
+            String responseMessage = ChatResponseAssembler.normalizeNonWorkflowOperationMessage(response.message());
             TaskContext finalResponseContext = finalizeResponseTaskContext(
                     context,
                     response.taskContext(),
                     question,
-                    response.message(),
+                    responseMessage,
                     managedDomains);
-            String responseMessage = response.message();
-            AgentResponse finalResponse = new AgentResponse(responseMessage, response.summary(), finalResponseContext);
+            AgentResponse finalResponse = new AgentResponse(
+                    responseMessage,
+                    response.summary(),
+                    finalResponseContext,
+                    response.metadata());
             appendConversationTurn(memoryKey, question, finalResponse.message());
             savePersistedSummary(finalResponse.taskContext(), finalResponse.summary());
             savePersistedTaskContext(finalResponse.taskContext());
@@ -229,7 +235,8 @@ public class ChatBotEndpoint {
                                 + "Please verify the MCP server endpoint in application.yaml (langchain4j.mcp-clients.wls-tools-mcp-server.uri) "
                                 + "and confirm the backend service is running.",
                         compactedSummary,
-                        compactedContext);
+                        compactedContext,
+                        null);
                 appendConversationTurn(memoryKey, question, fallback.message());
                 logContext("fallback-response", fallback.taskContext());
                 return fallback;
@@ -241,7 +248,7 @@ public class ChatBotEndpoint {
     private static AgentResponse parseIncomingBody(String rawBody) {
         String body = rawBody == null ? "" : rawBody.trim();
         if (body.isBlank()) {
-            return new AgentResponse("", "", TaskContext.empty());
+            return new AgentResponse("", "", TaskContext.empty(), null);
         }
 
         try {
@@ -259,7 +266,7 @@ public class ChatBotEndpoint {
             }
         }
 
-        return new AgentResponse("", "", TaskContext.empty());
+        return new AgentResponse("", "", TaskContext.empty(), null);
     }
 
     private static String maybeWrapAsObject(String body) {
@@ -286,7 +293,7 @@ public class ChatBotEndpoint {
                 summary = context.memorySummary();
             }
 
-            return new AgentResponse(message, summary, context);
+            return new AgentResponse(message, summary, context, null);
         }
     }
 
@@ -1009,7 +1016,8 @@ public class ChatBotEndpoint {
                     "I can track async job status, but I need the " + missing
                             + ". Please provide: 'Track async job status for PID <pid> on host <host>'.",
                     summary,
-                    responseContext);
+                    responseContext,
+                    null);
         }
 
         String trackingPrompt = """
@@ -1032,12 +1040,37 @@ public class ChatBotEndpoint {
                     + ". Please retry in a few seconds.";
         }
 
+        trackingResult = ChatResponseAssembler.normalizeAsyncTrackingResult(trackingResult, pid, host);
+        ResponseMetadata trackingMetadata = isTerminalAsyncTrackingStatus(trackingResult)
+                ? null
+                : metadataWithActions(List.of(new ResponseAction(
+                "async-tracking",
+                "Track async job status",
+                "Track async job status for PID " + pid + " on host " + host,
+                null)));
+
         TaskContext responseContext = (context == null ? TaskContext.empty() : context)
                 .withTargetHosts(host)
                 .withLastUserRequest(question);
         appendConversationTurn(memoryKey, question, trackingResult);
-        return new AgentResponse(trackingResult, summary, responseContext);
+        return new AgentResponse(
+                trackingResult,
+                summary,
+                responseContext,
+                trackingMetadata);
     }
+
+
+    private static boolean isTerminalAsyncTrackingStatus(String trackingResult) {
+        if (isBlank(trackingResult)) {
+            return false;
+        }
+        String lower = trackingResult.toLowerCase();
+        return lower.contains(": completed")
+                || lower.contains(": failed")
+                || lower.contains(": not found");
+    }
+
 
     private static boolean looksLikeAsyncPidTrackingQuestion(String question) {
         if (question == null || question.isBlank()) {
@@ -1098,7 +1131,8 @@ public class ChatBotEndpoint {
                     "I can create a patching workflow proposal, but I need the target domain. "
                             + "Please specify a domain, for example: 'Apply recommended patches to domain payments-prod'.",
                     summary,
-                    context == null ? TaskContext.empty() : context);
+                    context == null ? TaskContext.empty() : context,
+                    null);
         }
 
         PatchingWorkflowProposalResult proposal = workflowCoordinator.createProposal(
@@ -1114,14 +1148,19 @@ public class ChatBotEndpoint {
                 .withLastUserRequest(question);
 
         String message;
+        ResponseMetadata metadata = null;
         if (proposal.created()) {
             String proposalDetails = fetchPatchingProposalDetails(targetDomain);
+            String workflowId = workflow.workflowId();
             message = "Created patching workflow proposal for domain '" + targetDomain + "'. Workflow ID: "
-                    + workflow.workflowId() + ".\n"
+                    + workflowId + ".\n"
                     + "Following patches will be applied to the domain:\n"
-                    + proposalDetails + "\n"
-                    + "We will stop all servers, apply recommended patches, start all the servers and verify that domain is on latest patch.\n"
-                    + "Reply with 'approve workflow " + workflow.workflowId() + "' (or reject/cancel).";
+                    + proposalDetails + "\n\n"
+                    + "Use workflow actions to approve, reject, or cancel this proposal.";
+            metadata = metadataWithActions(List.of(
+                    workflowAction("approve", workflowId),
+                    workflowAction("reject", workflowId),
+                    workflowAction("cancel", workflowId)));
         } else {
             message = "A workflow is already active for domain '" + targetDomain + "'. Existing workflow ID: "
                     + proposal.conflictWorkflowId()
@@ -1129,20 +1168,21 @@ public class ChatBotEndpoint {
         }
 
         appendConversationTurn(memoryKey, question, message);
-        return new AgentResponse(message, summary, responseContext);
+        return new AgentResponse(message, summary, responseContext, metadata);
     }
 
     private String fetchPatchingProposalDetails(String targetDomain) {
         try {
-            String prompt = "List recommended patches to apply for domain " + targetDomain
-                    + ". Return concise patch identifiers and one-line reason for each.";
+            String prompt = "Use domain-patch-status for domain " + targetDomain
+                    + " and list only applicable patches to apply now. "
+                    + "Return concise patch identifiers and one-line reason for each. "
+                    + "Do not include approve/reject/cancel workflow action hints in the response.";
             String details = patchingAgent.analyzeRequest(prompt);
-            if (isBlank(details)) {
-                return "- Unable to retrieve patch list details right now.";
-            }
-            return details.trim();
+            return ChatResponseAssembler.formatPatchingProposalDetails(details);
         } catch (RuntimeException ex) {
-            LOGGER.log(Level.WARNING, "Unable to fetch patch proposal details for domain " + targetDomain, ex);
+            LOGGER.log(Level.WARNING,
+                    "Failed to fetch/parse patching proposal details for domain " + targetDomain,
+                    ex);
             return "- Unable to retrieve patch list details right now.";
         }
     }
@@ -1176,7 +1216,7 @@ public class ChatBotEndpoint {
             String message = "I found no unique pending workflow to " + normalizedQuestion
                     + ". Please specify a workflowId or domain. Example: 'approve workflow <id>' or 'approve for domain payments-prod'.";
             appendConversationTurn(memoryKey, question, message);
-            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context);
+            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context, null);
         }
 
         Optional<WorkflowRecord> updated = workflowCoordinator.applyApprovalDecision(
@@ -1188,7 +1228,7 @@ public class ChatBotEndpoint {
             String message = "Workflow '" + resolvedWorkflowId
                     + "' is not awaiting approval (or was not found). Ask for status before retrying.";
             appendConversationTurn(memoryKey, question, message);
-            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context);
+            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context, null);
         }
 
         WorkflowRecord workflow = updated.orElseThrow();
@@ -1204,12 +1244,19 @@ public class ChatBotEndpoint {
             case APPROVED -> "Approved workflow '" + workflow.workflowId() + "' for domain '" + workflow.domain()
                     + "'. Execution has been queued.";
             case REJECTED -> "Rejected workflow '" + workflow.workflowId() + "' for domain '" + workflow.domain() + "'.";
-            case CANCELLED -> "Cancelled workflow '" + workflow.workflowId() + "' for domain '" + workflow.domain() + "'.";
             default -> "Recorded approval decision for workflow '" + workflow.workflowId() + "'.";
         };
 
+        ResponseMetadata metadata = workflow.currentState() == WorkflowStatus.APPROVED
+                ? metadataWithActions(List.of(new ResponseAction(
+                "workflow-status",
+                "Check status",
+                "Check status for workflow " + workflow.workflowId(),
+                workflow.workflowId())))
+                : null;
+
         appendConversationTurn(memoryKey, question, message);
-        return new AgentResponse(message, summary, responseContext);
+        return new AgentResponse(message, summary, responseContext, metadata);
     }
 
     private AgentResponse handleWorkflowStatusRequest(String question,
@@ -1230,29 +1277,30 @@ public class ChatBotEndpoint {
             String message = "Please specify which workflow status you need: provide a workflowId or domain."
                     + " Example: 'status for workflow <id>' or 'status for domain payments-prod'.";
             appendConversationTurn(memoryKey, question, message);
-            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context);
+            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context, null);
         }
 
         if (workflow.isEmpty()) {
             String message = "I couldn't find a workflow for that reference.";
             appendConversationTurn(memoryKey, question, message);
-            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context);
+            return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context, null);
         }
 
         WorkflowRecord record = workflow.orElseThrow();
         String message = "Workflow '" + record.workflowId() + "' for domain '" + record.domain()
                 + "' is in state '" + record.currentState() + "'.\n"
-                + renderStepProgress(record)
+                + renderStepStatusMarkdown(record)
                 + (isBlank(record.failureReason()) ? "" : "\nFailure reason: " + record.failureReason());
         TaskContext responseContext = (context == null ? TaskContext.empty() : context)
                 .withLastReferencedWorkflowId(record.workflowId())
                 .withLastUserRequest(question);
         appendConversationTurn(memoryKey, question, message);
-        return new AgentResponse(message, summary, responseContext);
+        return new AgentResponse(message, summary, responseContext, null);
     }
 
     private static String renderStepProgress(WorkflowRecord record) {
         List<String> steps = List.of("stop servers", "apply patches", "start servers", "verify patch level");
+        List<String> completedSteps = orderedCompletedSteps(record, steps);
         int completedIndex = switch (record.currentState()) {
             case COMPLETED -> 3;
             case FAILED, EXECUTION_TIMED_OUT -> -1;
@@ -1282,7 +1330,7 @@ public class ChatBotEndpoint {
         if (record.currentState() == WorkflowStatus.IN_EXECUTION
                 || record.currentState() == WorkflowStatus.QUEUED
                 || record.currentState() == WorkflowStatus.APPROVED) {
-            return renderInExecutionProgress(steps, inProgress);
+            return renderInExecutionProgress(steps, completedSteps, inProgress);
         }
 
         if (record.currentState() == WorkflowStatus.AWAITING_APPROVAL
@@ -1314,15 +1362,85 @@ public class ChatBotEndpoint {
         return completed + "\nStep in progress: " + (inProgress == null ? "none" : inProgress) + "\n" + pending;
     }
 
-    private static String renderInExecutionProgress(List<String> steps, String inProgress) {
-        String activeStep = isBlank(inProgress) ? "stop servers" : inProgress;
+    private static String renderStepStatusMarkdown(WorkflowRecord record) {
+        List<String> steps = List.of("stop servers", "apply patches", "start servers", "verify patch level");
+        List<String> completedSteps = orderedCompletedSteps(record, steps);
+        String inProgress = inferInProgressStep(record);
+        String failedStep = inferFailedStep(record);
+
+        if ((record.currentState() == WorkflowStatus.FAILED
+                || record.currentState() == WorkflowStatus.EXECUTION_TIMED_OUT)
+                && completedSteps.isEmpty()
+                && !isBlank(failedStep)) {
+            int failedIndex = steps.indexOf(failedStep);
+            if (failedIndex > 0) {
+                completedSteps = List.copyOf(steps.subList(0, failedIndex));
+            }
+        }
+
+        StringBuilder markdown = new StringBuilder();
+        for (String step : steps) {
+            boolean completed = completedSteps.contains(step);
+            boolean active = !isBlank(inProgress) && inProgress.equals(step);
+            boolean failed = !isBlank(failedStep)
+                    && (record.currentState() == WorkflowStatus.FAILED
+                    || record.currentState() == WorkflowStatus.EXECUTION_TIMED_OUT)
+                    && failedStep.equals(step);
+
+            String icon;
+            if (failed) {
+                icon = "❌";
+            } else if (completed) {
+                icon = "✅";
+            } else if (active && record.currentState() == WorkflowStatus.IN_EXECUTION) {
+                icon = "⏳";
+            } else {
+                icon = "⏺️";
+            }
+
+            markdown.append("- ")
+                    .append(icon)
+                    .append(" ")
+                    .append(humanizeStepName(step))
+                    .append("\n");
+        }
+        return markdown.toString().trim();
+    }
+
+    private static String humanizeStepName(String step) {
+        if (isBlank(step)) {
+            return "Unknown step";
+        }
+        return switch (step) {
+            case "stop servers" -> "Stop servers";
+            case "apply patches" -> "Apply patches";
+            case "start servers" -> "Start servers";
+            case "verify patch level" -> "Verify patch level";
+            default -> step;
+        };
+    }
+
+    private static String renderInExecutionProgress(List<String> steps, List<String> completedSteps, String inProgress) {
+        String inferredActiveStep = inProgress;
+        if (isBlank(inferredActiveStep)) {
+            inferredActiveStep = steps.stream()
+                    .filter(step -> completedSteps == null || !completedSteps.contains(step))
+                    .findFirst()
+                    .orElse("none");
+        }
+        final String activeStep = inferredActiveStep;
+
+        String completed = (completedSteps == null || completedSteps.isEmpty())
+                ? "none"
+                : String.join(", ", completedSteps);
 
         String pending = steps.stream()
+                .filter(step -> completedSteps == null || !completedSteps.contains(step))
                 .filter(step -> !step.equals(activeStep))
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("none");
 
-        return "Completed steps: none\n"
+        return "Completed steps: " + completed + "\n"
                 + "Step in progress: " + activeStep + "\n"
                 + "Pending steps: " + pending;
     }
@@ -1331,10 +1449,52 @@ public class ChatBotEndpoint {
         if (record == null || record.currentState() == null) {
             return null;
         }
+        if (record.steps() != null) {
+            for (WorkflowStepRecord step : record.steps()) {
+                if (step != null && step.state() == WorkflowStatus.IN_EXECUTION) {
+                    String normalized = normalizeStepName(step.name());
+                    if (!isBlank(normalized)) {
+                        return normalized;
+                    }
+                }
+            }
+        }
         return switch (record.currentState()) {
             case IN_EXECUTION, APPROVED, QUEUED -> "stop servers";
             default -> null;
         };
+    }
+
+    private static List<String> orderedCompletedSteps(WorkflowRecord record, List<String> canonicalSteps) {
+        if (record == null || record.steps() == null || record.steps().isEmpty()) {
+            return List.of();
+        }
+        return canonicalSteps.stream()
+                .filter(step -> record.steps().stream()
+                        .anyMatch(actual -> actual != null
+                                && actual.state() == WorkflowStatus.COMPLETED
+                                && step.equals(normalizeStepName(actual.name()))))
+                .toList();
+    }
+
+    private static String normalizeStepName(String rawStepName) {
+        if (isBlank(rawStepName)) {
+            return null;
+        }
+        String candidate = rawStepName.trim().toLowerCase();
+        if (candidate.contains("stop") && candidate.contains("server")) {
+            return "stop servers";
+        }
+        if (candidate.contains("apply") && candidate.contains("patch")) {
+            return "apply patches";
+        }
+        if (candidate.contains("start") && candidate.contains("server")) {
+            return "start servers";
+        }
+        if (candidate.contains("verify") && candidate.contains("patch")) {
+            return "verify patch level";
+        }
+        return null;
     }
 
     private static String inferFailedStep(WorkflowRecord record) {
@@ -1423,7 +1583,7 @@ public class ChatBotEndpoint {
                 .withActiveWorkflowIds(summaries.stream().map(WorkflowSummary::workflowId).limit(10).toList())
                 .withLastUserRequest(question);
         appendConversationTurn(memoryKey, question, message);
-        return new AgentResponse(message, summary, responseContext);
+        return new AgentResponse(message, summary, responseContext, null);
     }
 
     private static boolean looksLikeWorkflowProposalRequest(String normalizedQuestion) {
@@ -1456,10 +1616,12 @@ public class ChatBotEndpoint {
         if (normalizedQuestion.startsWith("approve")) {
             return ApprovalDecision.APPROVE;
         }
-        if (normalizedQuestion.startsWith("reject")) {
+        if (normalizedQuestion.startsWith("reject")
+                || normalizedQuestion.startsWith("cancel workflow")
+                || normalizedQuestion.startsWith("cancel approval")) {
             return ApprovalDecision.REJECT;
         }
-        return ApprovalDecision.CANCEL;
+        return ApprovalDecision.REJECT;
     }
 
     private static Optional<String> extractWorkflowId(String question) {
@@ -1630,5 +1792,24 @@ public class ChatBotEndpoint {
     private static java.util.List<String> firstNonEmptyList(java.util.List<String> preferred,
                                                             java.util.List<String> fallback) {
         return preferred != null && !preferred.isEmpty() ? preferred : fallback;
+    }
+
+    private static ResponseAction workflowAction(String decision, String workflowId) {
+        String normalized = decision == null ? "" : decision.trim().toLowerCase();
+        String label = normalized.isBlank()
+                ? "Workflow action"
+                : Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
+        return new ResponseAction(
+                "workflow-" + normalized,
+                label,
+                label + " workflow " + workflowId,
+                workflowId);
+    }
+
+    private static ResponseMetadata metadataWithActions(List<ResponseAction> actions) {
+        List<ResponseAction> safeActions = actions == null ? List.of() : actions.stream()
+                .filter(action -> action != null && !isBlank(action.prompt()))
+                .toList();
+        return safeActions.isEmpty() ? null : new ResponseMetadata(safeActions);
     }
 }

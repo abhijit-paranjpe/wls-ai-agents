@@ -25,6 +25,19 @@ public interface DomainRuntimeAgent {
             For server start/stop operations, execute tools first and report only factual results.
             Do NOT invent or assume job IDs, tracking IDs, PIDs, or statuses.
             If tool output does not provide a tracking identifier, explicitly say no tracking ID was returned.
+            For direct (non-workflow) start/stop runtime operations, return exactly one JSON object with this shape:
+            {
+              "status": "started|completed|failed|running|unknown",
+              "operation": "start-servers|stop-servers|track-async-job",
+              "domain": "<domain>",
+              "async": true|false,
+              "host": "<host>",
+              "pid": "<pid>",
+              "message": "<concise factual detail>"
+            }
+            Always include status, operation, host, and pid fields for runtime start/stop actions.
+            If the user request includes strict JSON output/schema instructions, follow them exactly.
+            In that case, return only one JSON object and no surrounding prose or markdown.
             Use tools when needed. User request: {{question}}
             """)
     @Agent(value = "Domain runtime server control specialist", outputKey = "lastResponse")

@@ -85,7 +85,7 @@ public interface WebLogicAgent {
                 .withIntent(resolvedIntent)
                 .withMemorySummary(nextSummary);
 
-        return new AgentResponse(cleanedResponse, nextSummary, finalContext);
+        return new AgentResponse(cleanedResponse, nextSummary, finalContext, null);
     }
 
     private static TaskContext applyStructuredTaskContextOverrides(TaskContext baseContext, String lastResponse) {

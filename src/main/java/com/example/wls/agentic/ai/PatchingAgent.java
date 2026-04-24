@@ -18,6 +18,8 @@ public interface PatchingAgent {
             When the request explicitly tells you to apply or roll back patches, you must execute the relevant MCP tools
             and report only factual tool results. Do not stop at planning or recommendation if execution was requested.
             Never claim a patch was applied, rolled back, or verified unless the tool output confirms it.
+            If the user request includes strict JSON output/schema instructions, follow them exactly.
+            In that case, return only one JSON object and no surrounding prose or markdown.
             Use tools when needed. User request: {{question}}
             """)
     @Agent(value = "Patching specialist", outputKey = "lastResponse")

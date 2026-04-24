@@ -11,12 +11,13 @@ public interface PatchingWorkflowOutcomeRouterAgent {
     @Output
     static String route(@V(PatchingWorkflowStateKeys.APPROVAL_DECISION_KEY) String decision) {
         if (decision == null || decision.isBlank()) {
-            return "CANCELLED";
+            return "REJECTED";
         }
         String normalized = decision.trim().toUpperCase();
         return switch (normalized) {
-            case "APPROVED", "REJECTED", "CANCELLED" -> normalized;
-            default -> "CANCELLED";
+            case "APPROVED", "REJECTED" -> normalized;
+            case "CANCELLED" -> "REJECTED";
+            default -> "REJECTED";
         };
     }
 }

@@ -11,11 +11,11 @@ class HumanApprovalAgentTest {
     void toOutcomeMapsApprovalDecisionsToExpectedLabels() {
         assertEquals("APPROVED", HumanApprovalAgent.toOutcome(ApprovalDecision.APPROVE));
         assertEquals("REJECTED", HumanApprovalAgent.toOutcome(ApprovalDecision.REJECT));
-        assertEquals("CANCELLED", HumanApprovalAgent.toOutcome(ApprovalDecision.CANCEL));
+        assertEquals("REJECTED", HumanApprovalAgent.toOutcome(ApprovalDecision.CANCEL));
     }
 
     @Test
-    void toOutcomeDefaultsNullToCancelled() {
-        assertEquals("CANCELLED", HumanApprovalAgent.toOutcome(null));
+    void toOutcomeDefaultsNullToRejected() {
+        assertEquals("REJECTED", HumanApprovalAgent.toOutcome(null));
     }
 }

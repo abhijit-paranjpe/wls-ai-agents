@@ -158,6 +158,15 @@
                 <target>21</target>
                 <release>21</release>
             </configuration>
+            <executions>
+                <execution>
+                    <id>recompile-generated-sources</id>
+                    <phase>process-classes</phase>
+                    <goals>
+                        <goal>compile</goal>
+                    </goals>
+                </execution>
+            </executions>
         </plugin>
 
         <!-- Surefire plugin for JUnit 5 -->

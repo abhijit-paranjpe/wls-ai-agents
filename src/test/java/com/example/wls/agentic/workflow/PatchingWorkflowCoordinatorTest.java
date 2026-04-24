@@ -141,20 +141,39 @@ class PatchingWorkflowCoordinatorTest {
             com.example.wls.agentic.ai.DomainRuntimeAgent runtimeAgent = mock(com.example.wls.agentic.ai.DomainRuntimeAgent.class);
             com.example.wls.agentic.ai.PatchingAgent patchingAgent = mock(com.example.wls.agentic.ai.PatchingAgent.class);
             when(runtimeAgent.analyzeRequest(contains("Stop all servers")))
-                    .thenReturn("Stop initiated for host wlsoci12-wls-0 pid 111");
+                    .thenReturn("""
+                            {"status":"started","operation":"stop-servers","domain":"payments-prod","async":true,
+                             "host":"wlsoci12-wls-0","pid":"111","message":"Stop initiated"}
+                            """);
             when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 111 on host wlsoci12-wls-0")))
-                    .thenReturn("The async job with PID 111 on host wlsoci12-wls-0 has completed successfully.");
-            when(runtimeAgent.analyzeRequest(contains("fully stopped"))).thenReturn("All servers fully stopped");
+                    .thenReturn("""
+                            {"status":"completed","operation":"track-async-job","domain":"payments-prod","async":false,
+                             "host":"wlsoci12-wls-0","pid":"111","message":"Completed successfully"}
+                            """);
             when(runtimeAgent.analyzeRequest(contains("Start all servers")))
-                    .thenReturn("Start initiated for host wlsoci12-wls-0 pid 333");
+                    .thenReturn("""
+                            {"status":"started","operation":"start-servers","domain":"payments-prod","async":true,
+                             "host":"wlsoci12-wls-0","pid":"333","message":"Start initiated"}
+                            """);
             when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 333 on host wlsoci12-wls-0")))
-                    .thenReturn("The async job with PID 333 on host wlsoci12-wls-0 has completed successfully.");
-            when(runtimeAgent.analyzeRequest(contains("fully running"))).thenReturn("All servers fully running");
+                    .thenReturn("""
+                            {"status":"completed","operation":"track-async-job","domain":"payments-prod","async":false,
+                             "host":"wlsoci12-wls-0","pid":"333","message":"Completed successfully"}
+                            """);
             when(patchingAgent.analyzeRequest(contains("Apply recommended patches")))
-                    .thenReturn("Apply initiated for host wlsoci12-wls-0 pid 222");
+                    .thenReturn("""
+                            {"status":"started","operation":"apply-recommended-patches","domain":"payments-prod","async":true,
+                             "host":"wlsoci12-wls-0","pid":"222","message":"Apply initiated"}
+                            """);
             when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 222 on host wlsoci12-wls-0")))
-                    .thenReturn("The async job with PID 222 on host wlsoci12-wls-0 has completed successfully.");
-            when(patchingAgent.analyzeRequest(contains("Verify domain"))).thenReturn("Verification successful");
+                    .thenReturn("""
+                            {"status":"completed","operation":"track-async-job","domain":"payments-prod","async":false,
+                             "host":"wlsoci12-wls-0","pid":"222","message":"Completed successfully"}
+                            """);
+            when(patchingAgent.analyzeRequest(contains("Verify domain"))).thenReturn("""
+                    {"status":"completed","operation":"verify-patch-level","domain":"payments-prod","async":false,
+                     "host":"","pid":"","message":"Verification successful"}
+                    """);
 
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
