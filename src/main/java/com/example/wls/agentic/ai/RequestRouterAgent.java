@@ -80,7 +80,9 @@ public interface RequestRouterAgent {
 
     @ActivationCondition(GeneralAssistantAgent.class)
     static boolean activateGeneralAssistance(@V("intent") RequestIntent intent) {
-        boolean selected = intent == RequestIntent.GENERAL_ASSISTANCE;
+        // Fallback guard: if classifier output is missing/unparseable (intent == null),
+        // ensure the router still selects an agent so `lastResponse` is always produced.
+        boolean selected = intent == null || intent == RequestIntent.GENERAL_ASSISTANCE;
         logSelection("GeneralAssistantAgent", intent, selected);
         return selected;
     }

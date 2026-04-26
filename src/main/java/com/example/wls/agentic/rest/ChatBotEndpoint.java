@@ -11,6 +11,7 @@ import com.example.wls.agentic.dto.TaskContexts;
 import com.example.wls.agentic.memory.ConversationMemoryService;
 import com.example.wls.agentic.memory.ManagedDomainCacheService;
 import com.example.wls.agentic.workflow.ApprovalDecision;
+import com.example.wls.agentic.workflow.WorkflowStepStatus;
 import com.example.wls.agentic.workflow.PatchingWorkflowCoordinator;
 import com.example.wls.agentic.workflow.PatchingWorkflowProposalResult;
 import com.example.wls.agentic.workflow.WorkflowApprovalSemaphore;
@@ -38,6 +39,7 @@ import java.io.StringReader;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -1142,30 +1144,32 @@ public class ChatBotEndpoint {
                 truncate(question, MAX_CONSTRAINTS_CHARS));
 
         WorkflowRecord workflow = proposal.workflow();
-        TaskContext responseContext = (context == null ? TaskContext.empty() : context)
-                .withActiveWorkflowIds(List.of(workflow.workflowId()))
-                .withLastReferencedWorkflowId(workflow.workflowId())
+        TaskContext responseContextBase = (context == null ? TaskContext.empty() : context)
                 .withLastUserRequest(question);
 
         String message;
         ResponseMetadata metadata = null;
         if (proposal.created()) {
             String proposalDetails = fetchPatchingProposalDetails(targetDomain);
-            String workflowId = workflow.workflowId();
-            message = "Created patching workflow proposal for domain '" + targetDomain + "'. Workflow ID: "
-                    + workflowId + ".\n"
+            message = "Created patching workflow proposal for domain '" + targetDomain + "'.\n"
                     + "Following patches will be applied to the domain:\n"
                     + proposalDetails + "\n\n"
                     + "Use workflow actions to approve, reject, or cancel this proposal.";
             metadata = metadataWithActions(List.of(
-                    workflowAction("approve", workflowId),
-                    workflowAction("reject", workflowId),
-                    workflowAction("cancel", workflowId)));
+                    domainWorkflowAction("approve", targetDomain),
+                    domainWorkflowAction("reject", targetDomain),
+                    domainWorkflowAction("cancel", targetDomain)));
         } else {
             message = "A workflow is already active for domain '" + targetDomain + "'. Existing workflow ID: "
                     + proposal.conflictWorkflowId()
                     + ". Use 'status for workflow " + proposal.conflictWorkflowId() + "' or approve/reject/cancel it.";
         }
+
+        TaskContext responseContext = workflow == null
+                ? responseContextBase.withTargetDomain(targetDomain)
+                : responseContextBase
+                .withActiveWorkflowIds(List.of(workflow.workflowId()))
+                .withLastReferencedWorkflowId(workflow.workflowId());
 
         appendConversationTurn(memoryKey, question, message);
         return new AgentResponse(message, summary, responseContext, metadata);
@@ -1212,17 +1216,35 @@ public class ChatBotEndpoint {
             resolvedWorkflowId = pending.getFirst().workflowId();
         }
 
-        if (isBlank(resolvedWorkflowId)) {
+        if (isBlank(resolvedWorkflowId)
+                && isBlank(domainFromQuestion)
+                && (context == null || isBlank(context.targetDomain()))) {
             String message = "I found no unique pending workflow to " + normalizedQuestion
                     + ". Please specify a workflowId or domain. Example: 'approve workflow <id>' or 'approve for domain payments-prod'.";
             appendConversationTurn(memoryKey, question, message);
             return new AgentResponse(message, summary, context == null ? TaskContext.empty() : context, null);
         }
 
-        Optional<WorkflowRecord> updated = workflowCoordinator.applyApprovalDecision(
-                resolvedWorkflowId,
-                decision,
-                WorkflowChannel.CHAT);
+        Optional<WorkflowRecord> updated;
+        if (!isBlank(resolvedWorkflowId)) {
+            updated = workflowCoordinator.applyApprovalDecision(
+                    resolvedWorkflowId,
+                    decision,
+                    WorkflowChannel.CHAT);
+        } else if (!isBlank(domainFromQuestion) || (context != null && !isBlank(context.targetDomain()))) {
+            String approvalDomain = !isBlank(domainFromQuestion)
+                    ? domainFromQuestion
+                    : context.targetDomain();
+            updated = workflowCoordinator.applyApprovalDecisionByDomain(
+                    approvalDomain,
+                    decision,
+                    WorkflowChannel.CHAT,
+                    context == null ? null : context.conversationId(),
+                    context == null ? null : context.taskId(),
+                    truncate(question, MAX_CONSTRAINTS_CHARS));
+        } else {
+            updated = Optional.empty();
+        }
 
         if (updated.isEmpty()) {
             String message = "Workflow '" + resolvedWorkflowId
@@ -1451,7 +1473,7 @@ public class ChatBotEndpoint {
         }
         if (record.steps() != null) {
             for (WorkflowStepRecord step : record.steps()) {
-                if (step != null && step.state() == WorkflowStatus.IN_EXECUTION) {
+                if (step != null && step.state() == WorkflowStepStatus.IN_EXECUTION) {
                     String normalized = normalizeStepName(step.name());
                     if (!isBlank(normalized)) {
                         return normalized;
@@ -1470,11 +1492,31 @@ public class ChatBotEndpoint {
             return List.of();
         }
         return canonicalSteps.stream()
-                .filter(step -> record.steps().stream()
-                        .anyMatch(actual -> actual != null
-                                && actual.state() == WorkflowStatus.COMPLETED
-                                && step.equals(normalizeStepName(actual.name()))))
+                .filter(step -> isCanonicalStepCompleted(record, step))
                 .toList();
+    }
+
+    private static boolean isCanonicalStepCompleted(WorkflowRecord record, String canonicalStep) {
+        if (record == null || canonicalStep == null || record.steps() == null) {
+            return false;
+        }
+
+        boolean monitorPresent = record.steps().stream()
+                .filter(Objects::nonNull)
+                .map(WorkflowStepRecord::name)
+                .anyMatch(name -> isMonitorStepForCanonical(name, canonicalStep));
+
+        if (monitorPresent) {
+            return record.steps().stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(step -> step.state() == WorkflowStepStatus.COMPLETED
+                            && isMonitorStepForCanonical(step.name(), canonicalStep));
+        }
+
+        return record.steps().stream()
+                .filter(Objects::nonNull)
+                .anyMatch(step -> step.state() == WorkflowStepStatus.COMPLETED
+                        && canonicalStep.equals(normalizeStepName(step.name())));
     }
 
     private static String normalizeStepName(String rawStepName) {
@@ -1482,6 +1524,15 @@ public class ChatBotEndpoint {
             return null;
         }
         String candidate = rawStepName.trim().toLowerCase();
+        if (candidate.contains("monitor-stop-completion") || candidate.contains("initiate-stop-servers")) {
+            return "stop servers";
+        }
+        if (candidate.contains("monitor-start-completion") || candidate.contains("initiate-start-servers")) {
+            return "start servers";
+        }
+        if (candidate.contains("monitor-patch-completion") || candidate.contains("apply-latest-patches")) {
+            return "apply patches";
+        }
         if (candidate.contains("stop") && candidate.contains("server")) {
             return "stop servers";
         }
@@ -1495,6 +1546,19 @@ public class ChatBotEndpoint {
             return "verify patch level";
         }
         return null;
+    }
+
+    private static boolean isMonitorStepForCanonical(String rawStepName, String canonicalStep) {
+        if (isBlank(rawStepName) || isBlank(canonicalStep)) {
+            return false;
+        }
+        String candidate = rawStepName.trim().toLowerCase();
+        return switch (canonicalStep) {
+            case "stop servers" -> candidate.contains("monitor-stop-completion");
+            case "apply patches" -> candidate.contains("monitor-patch-completion");
+            case "start servers" -> candidate.contains("monitor-start-completion");
+            default -> false;
+        };
     }
 
     private static String inferFailedStep(WorkflowRecord record) {
@@ -1804,6 +1868,21 @@ public class ChatBotEndpoint {
                 label,
                 label + " workflow " + workflowId,
                 workflowId);
+    }
+
+    private static ResponseAction domainWorkflowAction(String decision, String domain) {
+        String normalized = decision == null ? "" : decision.trim().toLowerCase();
+        String label = switch (normalized) {
+            case "approve" -> "Approve";
+            case "reject" -> "Reject";
+            case "cancel" -> "Cancel";
+            default -> "Act";
+        };
+        return new ResponseAction(
+                "workflow-approval",
+                label,
+                label,
+                null);
     }
 
     private static ResponseMetadata metadataWithActions(List<ResponseAction> actions) {

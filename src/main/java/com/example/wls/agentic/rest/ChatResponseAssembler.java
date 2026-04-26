@@ -14,6 +14,8 @@ final class ChatResponseAssembler {
     private static final Pattern TYPE_PATTERN = Pattern.compile("(?i)\\btype\\s*[:=]?\\s*([A-Za-z0-9._-]+)\\b");
     private static final Pattern WORKFLOW_ACTION_HINT_PATTERN = Pattern.compile(
             "(?i)\\b(?:approve|reject|cancel)\\s+workflow\\s+[A-Za-z0-9-]{6,}\\b");
+    private static final Pattern HOST_IN_MESSAGE_PATTERN = Pattern.compile("(?i)\\bon\\s+host\\s+([A-Za-z0-9._-]+)");
+    private static final Pattern PID_IN_MESSAGE_PATTERN = Pattern.compile("(?i)\\bpid\\s*(?:[:=#]|is|=)?\\s*(\\d+)");
 
     private ChatResponseAssembler() {
     }
@@ -80,8 +82,45 @@ final class ChatResponseAssembler {
             String operation = getString(object, "operation");
             String message = getString(object, "message");
 
+            if (isBlank(host) || isBlank(pid)) {
+                JsonObject hostPids = object.getJsonObject("hostPids");
+                if (hostPids != null && !hostPids.isEmpty()) {
+                    String inferredHost = null;
+                    String inferredPid = null;
+                    for (String key : hostPids.keySet()) {
+                        if (isBlank(key) || hostPids.isNull(key)) {
+                            continue;
+                        }
+                        String value = hostPids.getString(key, "");
+                        if (isBlank(value)) {
+                            continue;
+                        }
+                        inferredHost = key;
+                        inferredPid = value;
+                        break;
+                    }
+                    if (isBlank(host) && !isBlank(inferredHost)) {
+                        host = inferredHost;
+                    }
+                    if (isBlank(pid) && !isBlank(inferredPid)) {
+                        pid = inferredPid;
+                    }
+                }
+            }
+
+            if (isBlank(host)) {
+                host = extractHostFromMessage(message);
+            }
+            if (isBlank(pid)) {
+                pid = extractPidFromMessage(message);
+            }
+
             if (isBlank(status) && isBlank(host) && isBlank(pid) && isBlank(operation)) {
                 return rawMessage;
+            }
+
+            if (isRuntimeValidationMessage(message)) {
+                return message.trim();
             }
 
             if (isBlank(status) || isBlank(host) || isBlank(pid) || isBlank(operation)) {
@@ -205,6 +244,15 @@ final class ChatResponseAssembler {
                 || "started".equals(lower);
     }
 
+    private static boolean isRuntimeValidationMessage(String message) {
+        if (isBlank(message)) {
+            return false;
+        }
+        String lower = message.trim().toLowerCase();
+        return lower.contains("domain name is required")
+                || lower.contains("please provide the domain name");
+    }
+
     private static boolean isRedundantRuntimeDetailMessage(String message,
                                                            String operation,
                                                            String status,
@@ -315,6 +363,22 @@ final class ChatResponseAssembler {
             return "unknown";
         }
         return host.replaceAll("^[^A-Za-z0-9]+|[^A-Za-z0-9._-]+$", "");
+    }
+
+    private static String extractHostFromMessage(String message) {
+        if (isBlank(message)) {
+            return null;
+        }
+        Matcher matcher = HOST_IN_MESSAGE_PATTERN.matcher(message);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private static String extractPidFromMessage(String message) {
+        if (isBlank(message)) {
+            return null;
+        }
+        Matcher matcher = PID_IN_MESSAGE_PATTERN.matcher(message);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     private static String getString(JsonObject obj, String key) {

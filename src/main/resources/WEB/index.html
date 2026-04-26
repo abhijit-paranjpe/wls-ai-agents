@@ -206,6 +206,7 @@
     let summary = '';
     let taskContext = null;
     let assistantReady = false;
+    let requestInFlight = false;
 
     function setInputEnabled(enabled) {
         userInput.disabled = !enabled;
@@ -443,7 +444,7 @@
     }
 
     async function sendPrompt(text) {
-        if (!assistantReady) return;
+        if (!assistantReady || requestInFlight) return;
         const prompt = (text || '').trim();
         if (!prompt) return;
         appendMessage(prompt, 'user');
@@ -467,7 +468,7 @@
     }
 
     async function sendMessage() {
-        if (!assistantReady) return;
+        if (!assistantReady || requestInFlight) return;
 
         const text = userInput.value.trim();
         if (!text) {
@@ -481,6 +482,9 @@
     }
 
     async function requestAssistantMessage(text) {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        sendButton.disabled = true;
         try {
             const payload = {
                 message: text,
@@ -518,6 +522,9 @@
                 assistantReady = true;
                 setInputEnabled(true);
             }
+        } finally {
+            requestInFlight = false;
+            sendButton.disabled = !assistantReady;
         }
     }
 

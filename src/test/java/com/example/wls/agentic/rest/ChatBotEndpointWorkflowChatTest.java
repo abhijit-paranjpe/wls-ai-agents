@@ -8,6 +8,7 @@ import com.example.wls.agentic.memory.ConversationMemoryService;
 import com.example.wls.agentic.memory.ConversationMemoryStore;
 import com.example.wls.agentic.memory.ManagedDomainCacheService;
 import com.example.wls.agentic.workflow.InMemoryWorkflowStateStore;
+import com.example.wls.agentic.workflow.WorkflowStepStatus;
 import com.example.wls.agentic.workflow.PatchingWorkflowCoordinator;
 import com.example.wls.agentic.workflow.WorkflowRecord;
 import com.example.wls.agentic.workflow.WorkflowApprovalSemaphore;
@@ -64,7 +65,7 @@ class ChatBotEndpointWorkflowChatTest {
                 """);
 
         assertTrue(response.message().contains("Please specify a workflowId or domain"));
-        assertEquals(2, coordinator.listPendingApproval().size());
+        assertEquals(0, coordinator.listPendingApproval().size());
         verifyNoInteractions(webLogicAgent);
     }
 
@@ -118,24 +119,19 @@ class ChatBotEndpointWorkflowChatTest {
         assertNotNull(response.metadata().actions());
         assertEquals(3, response.metadata().actions().size());
         assertTrue(response.metadata().actions().stream().anyMatch(a ->
-                "Approve workflow ".concat(response.taskContext().lastReferencedWorkflowId()).equals(a.prompt())));
+                "Approve".equals(a.prompt())));
         assertTrue(response.metadata().actions().stream().anyMatch(a ->
-                "Reject workflow ".concat(response.taskContext().lastReferencedWorkflowId()).equals(a.prompt())));
+                "Reject".equals(a.prompt())));
         assertTrue(response.metadata().actions().stream().anyMatch(a ->
-                "Cancel workflow ".concat(response.taskContext().lastReferencedWorkflowId()).equals(a.prompt())));
+                "Cancel".equals(a.prompt())));
         assertFalse(response.message().contains("Choose one action:"));
         assertFalse(response.message().contains("Available actions:"));
         assertFalse(response.message().contains("Approve workflow " + response.taskContext().lastReferencedWorkflowId()));
         assertFalse(response.message().contains("Reject workflow " + response.taskContext().lastReferencedWorkflowId()));
         assertFalse(response.message().contains("Cancel workflow " + response.taskContext().lastReferencedWorkflowId()));
         assertNotNull(response.taskContext());
-        assertNotNull(response.taskContext().lastReferencedWorkflowId());
-        assertFalse(response.taskContext().activeWorkflowIds().isEmpty());
-        assertEquals(response.taskContext().lastReferencedWorkflowId(), response.taskContext().activeWorkflowIds().getFirst());
-
-        assertEquals(
-                WorkflowStatus.AWAITING_APPROVAL,
-                coordinator.getByWorkflowId(response.taskContext().lastReferencedWorkflowId()).orElseThrow().currentState());
+        assertEquals("payments-prod", response.taskContext().targetDomain());
+        assertEquals(0, coordinator.listPendingApproval().size());
         verifyNoInteractions(webLogicAgent);
     }
 
@@ -260,8 +256,8 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 null,
                 List.of(
-                        new WorkflowStepRecord("stop servers", "stop servers", WorkflowStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
-                        new WorkflowStepRecord("apply patches", "apply patches", WorkflowStatus.IN_EXECUTION, now.minusSeconds(10), null, "running"))));
+                        new WorkflowStepRecord("stop servers", "stop servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
+                        new WorkflowStepRecord("apply patches", "apply patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running"))));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -337,7 +333,6 @@ class ChatBotEndpointWorkflowChatTest {
     void approveWorkflowResponseContainsStatusActionMetadataWithoutDuplicateStatusLine() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
-        var created = coordinator.createProposal("payments-prod", "conv-1", "task-1", "request-1");
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
         ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
@@ -355,19 +350,20 @@ class ChatBotEndpointWorkflowChatTest {
 
         AgentResponse response = endpoint.chatWithAssistant("""
                 {
-                  "message": "approve workflow %s",
+                  "message": "approve for domain payments-prod",
                   "taskContext": {
                     "conversationId": "conv-1",
                     "taskId": "task-1"
                   }
                 }
-                """.formatted(created.workflowId()));
+                """);
 
         assertTrue(response.message().contains("Execution has been queued."));
-        assertFalse(response.message().contains("Check status for workflow " + created.workflowId()));
+        assertNotNull(response.taskContext().lastReferencedWorkflowId());
+        assertFalse(response.message().contains("Check status for workflow " + response.taskContext().lastReferencedWorkflowId()));
         assertNotNull(response.metadata());
         assertTrue(response.metadata().actions().stream().anyMatch(a ->
-                ("Check status for workflow " + created.workflowId()).equals(a.prompt())));
+                ("Check status for workflow " + response.taskContext().lastReferencedWorkflowId()).equals(a.prompt())));
     }
 
     @Test
@@ -463,6 +459,151 @@ class ChatBotEndpointWorkflowChatTest {
 
         assertTrue(response.message().contains("Runtime operation response is incomplete"));
         assertTrue(response.message().contains("missing: host, pid"));
+    }
+
+    @Test
+    void nonWorkflowRuntimeJsonResponseExtractsHostPidFromMessageWhenTopLevelFieldsMissing() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain"));
+        when(webLogicAgent.chat(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AgentResponse(
+                        """
+                        {"status":"running","operation":"start-servers","domain":"wlsucm14c_domain","async":true,
+                         "host":"","pid":"","message":"Start servers operation initiated for wlsucm14c_domain on host wlsucm14c-wls-0 with PID 1100214."}
+                        """,
+                        "",
+                        null,
+                        null));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "start all servers in domain wlsucm14c_domain",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertEquals(
+                "Start servers is running on host wlsucm14c-wls-0 (PID 1100214).",
+                response.message());
+    }
+
+    @Test
+    void nonWorkflowRuntimeJsonResponseUsesHostPidsMapWhenTopLevelHostPidMissing() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain"));
+        when(webLogicAgent.chat(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AgentResponse(
+                        """
+                        {"status":"started","operation":"start-servers","domain":"wlsucm14c_domain","async":true,
+                         "host":"","pid":"","hostPids":{"wlsucm14c-wls-0":"1100214"},
+                         "message":"Start servers operation initiated on domain wlsucm14c_domain."}
+                        """,
+                        "",
+                        null,
+                        null));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "start all servers in domain wlsucm14c_domain",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertEquals(
+                "Start servers is started on host wlsucm14c-wls-0 (PID 1100214).",
+                response.message());
+    }
+
+    @Test
+    void nonWorkflowRuntimeJsonDomainValidationMessageIsReturnedWithoutIncompleteWrapper() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        when(webLogicAgent.chat(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AgentResponse(
+                        """
+                        {"status":"unknown","operation":"start-servers","domain":"","host":"","pid":"",
+                         "message":"Domain name is required to start all servers. Please provide the domain name."}
+                        """,
+                        "",
+                        null,
+                        null));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "start all servers",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertEquals(
+                "Domain name is required to start all servers. Please provide the domain name.",
+                response.message());
     }
 
     private static ConversationMemoryService mockMemoryService() {
