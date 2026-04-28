@@ -113,6 +113,7 @@
     </dependencies>
 
     <build>
+        <finalName>wls-agents</finalName>
         <plugins>
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -157,6 +158,15 @@
                 <target>21</target>
                 <release>21</release>
             </configuration>
+            <executions>
+                <execution>
+                    <id>recompile-generated-sources</id>
+                    <phase>process-classes</phase>
+                    <goals>
+                        <goal>compile</goal>
+                    </goals>
+                </execution>
+            </executions>
         </plugin>
 
         <!-- Surefire plugin for JUnit 5 -->

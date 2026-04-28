@@ -6,8 +6,6 @@ import dev.langchain4j.agentic.Agent;
 import dev.langchain4j.service.UserMessage;
 import dev.langchain4j.service.V;
 
-import com.example.wls.agentic.ai.RequestIntent;
-
 @Ai.Agent("feature-disabled-agent")
 @Ai.ChatModel("wls-shared-model")
 public interface FeatureDisabledAgent {

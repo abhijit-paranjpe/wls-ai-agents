@@ -1,7 +1,6 @@
 package com.example.wls.agentic.memory;
 
 import com.example.wls.agentic.dto.TaskContext;
-import com.example.wls.agentic.dto.WorkflowHistoryRecord;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import com.mongodb.client.MongoCollection;
@@ -10,12 +9,11 @@ import io.helidon.config.Config;
 import org.bson.Document;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static com.mongodb.client.model.Filters.and;
 import static com.mongodb.client.model.Filters.eq;
-import static com.mongodb.client.model.Sorts.descending;
 
 public class MongoConversationMemoryStore implements ConversationMemoryStore {
 
@@ -76,9 +74,8 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 getBoolean(t, "awaitingFollowUp"),
                 t.getString("lastUserRequest"),
                 t.getString("lastAssistantQuestion"),
-                t.getString("workflowType"),
-                t.getString("workflowStep"),
-                t.getString("workflowStatus"),
+                getStringList(t, "activeWorkflowIds"),
+                t.getString("lastReferencedWorkflowId"),
                 t.getString("failureReason")));
     }
 
@@ -116,72 +113,14 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
                 .append("awaitingFollowUp", taskContext.awaitingFollowUp())
                 .append("lastUserRequest", taskContext.lastUserRequest())
                 .append("lastAssistantQuestion", taskContext.lastAssistantQuestion())
-                .append("workflowType", taskContext.workflowType())
-                .append("workflowStep", taskContext.workflowStep())
-                .append("workflowStatus", taskContext.workflowStatus());
+                .append("activeWorkflowIds", taskContext.activeWorkflowIds())
+                .append("lastReferencedWorkflowId", taskContext.lastReferencedWorkflowId())
+                .append("failureReason", taskContext.failureReason());
         if (taskContext.hostPids() != null && !taskContext.hostPids().isEmpty()) {
             contextDoc.append("hostPids", new Document(taskContext.hostPids()));
         }
         Document update = new Document("$set", new Document("conversationId", conversationId)
                 .append("taskContext", contextDoc));
-        collection.updateOne(filter, update, new com.mongodb.client.model.UpdateOptions().upsert(true));
-    }
-
-    @Override
-    public Optional<WorkflowHistoryRecord> loadWorkflowHistory(String domain, String operationType) {
-        String historyKey = workflowHistoryKey(domain, operationType);
-        if (historyKey == null) {
-            return Optional.empty();
-        }
-
-        Document doc = collection.find(and(
-                        eq("recordType", "workflowHistory"),
-                        eq("historyKey", historyKey)))
-                .first();
-        return Optional.ofNullable(toWorkflowHistoryRecord(doc));
-    }
-
-    @Override
-    public Optional<WorkflowHistoryRecord> loadLatestWorkflowHistory(String domain) {
-        String normalizedDomain = normalizeDomain(domain);
-        if (normalizedDomain == null) {
-            return Optional.empty();
-        }
-
-        Document doc = collection.find(and(
-                        eq("recordType", "workflowHistory"),
-                        eq("domainKey", normalizedDomain)))
-                .sort(descending("updatedAt"))
-                .first();
-        return Optional.ofNullable(toWorkflowHistoryRecord(doc));
-    }
-
-    @Override
-    public void saveWorkflowHistory(WorkflowHistoryRecord workflowHistoryRecord) {
-        if (workflowHistoryRecord == null) {
-            return;
-        }
-
-        String historyKey = workflowHistoryKey(workflowHistoryRecord.domain(), workflowHistoryRecord.operationType());
-        String domainKey = normalizeDomain(workflowHistoryRecord.domain());
-        if (historyKey == null || domainKey == null) {
-            return;
-        }
-
-        Document filter = new Document("historyKey", historyKey);
-        Document historyDoc = new Document("recordType", "workflowHistory")
-                .append("historyKey", historyKey)
-                .append("domainKey", domainKey)
-                .append("domain", workflowHistoryRecord.domain())
-                .append("workflowType", workflowHistoryRecord.workflowType())
-                .append("operationType", workflowHistoryRecord.operationType())
-                .append("workflowStep", workflowHistoryRecord.workflowStep())
-                .append("workflowStatus", workflowHistoryRecord.workflowStatus())
-                .append("lastUserRequest", workflowHistoryRecord.lastUserRequest())
-                .append("lastAssistantMessage", workflowHistoryRecord.lastAssistantMessage())
-                .append("updatedAt", workflowHistoryRecord.updatedAt())
-                .append("terminal", workflowHistoryRecord.terminal());
-        Document update = new Document("$set", historyDoc);
         collection.updateOne(filter, update, new com.mongodb.client.model.UpdateOptions().upsert(true));
     }
 
@@ -201,42 +140,16 @@ public class MongoConversationMemoryStore implements ConversationMemoryStore {
         return result.isEmpty() ? null : result;
     }
 
-    private static WorkflowHistoryRecord toWorkflowHistoryRecord(Document doc) {
-        if (doc == null) {
+    private static List<String> getStringList(Document document, String key) {
+        Object value = document.get(key);
+        if (!(value instanceof List<?> values) || values.isEmpty()) {
             return null;
         }
-        return new WorkflowHistoryRecord(
-                doc.getString("domain"),
-                doc.getString("workflowType"),
-                doc.getString("operationType"),
-                doc.getString("workflowStep"),
-                doc.getString("workflowStatus"),
-                doc.getString("lastUserRequest"),
-                doc.getString("lastAssistantMessage"),
-                doc.getString("updatedAt"),
-                getBoolean(doc, "terminal"));
-    }
-
-    private static String workflowHistoryKey(String domain, String operationType) {
-        String normalizedDomain = normalizeDomain(domain);
-        String normalizedOperation = normalizeOperationType(operationType);
-        if (normalizedDomain == null || normalizedOperation == null) {
-            return null;
-        }
-        return normalizedDomain + ":" + normalizedOperation;
-    }
-
-    private static String normalizeDomain(String domain) {
-        if (domain == null || domain.isBlank()) {
-            return null;
-        }
-        return domain.trim().toLowerCase();
-    }
-
-    private static String normalizeOperationType(String operationType) {
-        if (operationType == null || operationType.isBlank()) {
-            return null;
-        }
-        return operationType.trim().toUpperCase();
+        List<String> result = values.stream()
+                .filter(item -> item != null)
+                .map(String::valueOf)
+                .filter(v -> !v.isBlank())
+                .toList();
+        return result.isEmpty() ? null : result;
     }
 }

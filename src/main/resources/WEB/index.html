@@ -206,6 +206,7 @@
     let summary = '';
     let taskContext = null;
     let assistantReady = false;
+    let requestInFlight = false;
 
     function setInputEnabled(enabled) {
         userInput.disabled = !enabled;
@@ -260,9 +261,6 @@
 
         clearEphemeralTaskContextField(merged, next, 'pendingIntent');
         clearEphemeralTaskContextField(merged, next, 'lastAssistantQuestion');
-        clearEphemeralTaskContextField(merged, next, 'workflowType');
-        clearEphemeralTaskContextField(merged, next, 'workflowStep');
-        clearEphemeralTaskContextField(merged, next, 'workflowStatus');
 
         if (!Object.prototype.hasOwnProperty.call(next, 'awaitingFollowUp') || next.awaitingFollowUp == null) {
             delete merged.awaitingFollowUp;
@@ -283,7 +281,7 @@
         }
     }
 
-    function appendMessage(text, sender) {
+    function appendMessage(text, sender, metadata) {
         const row = document.createElement('div');
         row.className = `message ${sender}`;
         const bubble = document.createElement('div');
@@ -291,8 +289,17 @@
         const renderedText = sender === 'assistant' ? stripServerStartBoilerplate(text) : text;
         bubble[sender === 'assistant' ? 'innerHTML' : 'textContent'] = sender === 'assistant' ? marked.parse(renderedText) : renderedText;
 
+        if (sender === 'user') {
+            const userText = String(renderedText || '').trim();
+            if (userText) {
+                bubble.style.cursor = 'pointer';
+                bubble.title = 'Double-click to resend this message';
+                bubble.addEventListener('dblclick', () => sendPrompt(userText));
+            }
+        }
+
         if (sender === 'assistant') {
-            const actionLines = extractActionableLines(renderedText);
+            const actionLines = extractActionableLines(renderedText, metadata);
             actionLines.forEach(line => {
                 const button = document.createElement('button');
                 button.type = 'button';
@@ -309,8 +316,13 @@
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    function extractActionableLines(text) {
+    function extractActionableLines(text, metadata) {
         if (!text || typeof text !== 'string') return [];
+
+        const metadataActions = extractActionsFromMetadata(metadata);
+        if (metadataActions.length > 0) {
+            return metadataActions;
+        }
 
         const lines = text
             .split('\n')
@@ -319,11 +331,11 @@
 
         const seen = new Set();
         const actions = [];
-        const pattern = /(track\s+async\s+job\s+status|list\s+all\s+managed\s+domains|show\s+domain\s+overview|list\s+pending\s+patches|show\s+recommended\s+patches|start\s+all\s+servers|stop\s+all\s+servers|start\s+server|stop\s+server|list\s+deployed\s+applications|job\s+status|track\s+job|track\s+async)/i;
+        const commandPattern = /^(track\s+async\s+job\s+status\s+for\s+pid\b.*\bon\s+host\b|list\s+all\s+managed\s+domains\b|show\s+domain\s+overview\b|list\s+pending\s+patches\b|show\s+recommended\s+patches\b|start\s+all\s+servers\b|stop\s+all\s+servers\b|start\s+server\b|stop\s+server\b|list\s+deployed\s+applications\b|approve\s+workflow\s+[A-Za-z0-9-]{6,}\b|reject\s+workflow\s+[A-Za-z0-9-]{6,}\b|cancel\s+workflow\s+[A-Za-z0-9-]{6,}\b)/i;
 
         for (const line of lines) {
             if (line.length > 220) continue;
-            if (!pattern.test(line)) continue;
+            if (!commandPattern.test(line)) continue;
             if (seen.has(line.toLowerCase())) continue;
             seen.add(line.toLowerCase());
             actions.push(line);
@@ -333,6 +345,54 @@
         if (derivedTrackingAction && !seen.has(derivedTrackingAction.toLowerCase())) {
             seen.add(derivedTrackingAction.toLowerCase());
             actions.push(derivedTrackingAction);
+        }
+
+        const workflowActions = deriveWorkflowActions(text);
+        workflowActions.forEach(action => {
+            const key = action.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            actions.push(action);
+        });
+
+        return actions;
+    }
+
+    function extractActionsFromMetadata(metadata) {
+        if (!metadata || typeof metadata !== 'object') return [];
+        const actions = Array.isArray(metadata.actions) ? metadata.actions : [];
+        const seen = new Set();
+        const prompts = [];
+        actions.forEach(action => {
+            if (!action || typeof action !== 'object') return;
+            const prompt = typeof action.prompt === 'string' ? action.prompt.trim() : '';
+            if (!prompt) return;
+            const key = prompt.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            prompts.push(prompt);
+        });
+        return prompts;
+    }
+
+    function deriveWorkflowActions(text) {
+        if (!text || typeof text !== 'string') return [];
+
+        const actions = [];
+        const matcher = /(approve|reject|cancel)\s+workflow\s+([A-Za-z0-9-]{6,})/ig;
+        for (const match of text.matchAll(matcher)) {
+            const decision = String(match[1] || '').toLowerCase();
+            const workflowId = String(match[2] || '').trim();
+            if (!decision || !workflowId) continue;
+            const verb = decision.charAt(0).toUpperCase() + decision.slice(1);
+            actions.push(`${verb} workflow ${workflowId}`);
+        }
+
+        const statusMatcher = /check\s+status\s+for\s+workflow\s+([A-Za-z0-9-]{6,})/ig;
+        for (const match of text.matchAll(statusMatcher)) {
+            const workflowId = String(match[1] || '').trim();
+            if (!workflowId) continue;
+            actions.push(`Check status for workflow ${workflowId}`);
         }
 
         return actions;
@@ -347,8 +407,19 @@
         const host = hostMatch ? String(hostMatch[1] || '').trim() : '';
         const pid = pidMatch ? String(pidMatch[1] || '').trim() : '';
 
-        if (!host || !pid) return null;
-        return `Track async job status for PID ${pid} on host ${host}`;
+        let derivedHost = host;
+        let derivedPid = pid;
+
+        if (!derivedHost || !derivedPid) {
+            const inlineMatch = text.match(/\bon\s+host\s+([A-Za-z0-9._-]+)\s*\(\s*PID\s+(\d+)\s*\)/i);
+            if (inlineMatch) {
+                derivedHost = derivedHost || String(inlineMatch[1] || '').trim();
+                derivedPid = derivedPid || String(inlineMatch[2] || '').trim();
+            }
+        }
+
+        if (!derivedHost || !derivedPid) return null;
+        return `Track async job status for PID ${derivedPid} on host ${derivedHost}`;
     }
 
     function stripServerStartBoilerplate(text) {
@@ -364,6 +435,8 @@
                 || normalized.startsWith("i have initiated the process to start all servers")
                 || normalized.startsWith("the job has been started with the following tracking information")
                 || normalized.startsWith("the operation has been triggered with the following tracking information")
+                || (normalized.startsWith("track async job status for pid ")
+                    && (normalized.includes(", pid:") || normalized.includes("type:")))
             );
         });
 
@@ -371,7 +444,7 @@
     }
 
     async function sendPrompt(text) {
-        if (!assistantReady) return;
+        if (!assistantReady || requestInFlight) return;
         const prompt = (text || '').trim();
         if (!prompt) return;
         appendMessage(prompt, 'user');
@@ -395,7 +468,7 @@
     }
 
     async function sendMessage() {
-        if (!assistantReady) return;
+        if (!assistantReady || requestInFlight) return;
 
         const text = userInput.value.trim();
         if (!text) {
@@ -409,6 +482,9 @@
     }
 
     async function requestAssistantMessage(text) {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        sendButton.disabled = true;
         try {
             const payload = {
                 message: text,
@@ -433,7 +509,7 @@
             const data = await response.json();
             summary = typeof data.summary === 'string' ? data.summary : summary;
             taskContext = mergeTaskContext(taskContext, data.taskContext);
-            appendMessage(data.message || '_[No response]_ 🤖', 'assistant');
+            appendMessage(data.message || '_[No response]_ 🤖', 'assistant', data.metadata);
 
             if (!assistantReady && text === '') {
                 assistantReady = true;
@@ -446,6 +522,9 @@
                 assistantReady = true;
                 setInputEnabled(true);
             }
+        } finally {
+            requestInFlight = false;
+            sendButton.disabled = !assistantReady;
         }
     }
 

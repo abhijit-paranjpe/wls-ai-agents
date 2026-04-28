@@ -2,101 +2,95 @@ package com.example.wls.agentic.workflow;
 
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import java.time.Instant;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InMemoryWorkflowStateStoreTest {
 
     @Test
-    void storesDistinctWorkflowsPerConversationDomainAndOperation() {
+    void supportsLifecycleQueryAndListingOperations() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
 
-        WorkflowState domainAApply = WorkflowState.create(
-                "conv-1",
-                "user-1",
-                "PATCHING",
-                "APPLYING_PATCHES",
-                "IN_PROGRESS",
-                "domain-a",
-                null,
-                null,
-                "PATCH_APPLY",
-                null,
-                "apply patches to domain-a",
-                null,
-                null,
-                false);
+        Instant t1 = Instant.parse("2026-04-23T10:00:00Z");
+        Instant t2 = Instant.parse("2026-04-23T10:05:00Z");
+        Instant t3 = Instant.parse("2026-04-23T10:06:00Z");
+        Instant t4 = Instant.parse("2026-04-23T10:07:00Z");
 
-        WorkflowState domainBRollback = WorkflowState.create(
-                "conv-1",
-                "user-1",
-                "PATCHING",
-                "VERIFYING_STATUS",
-                "IN_PROGRESS",
-                "domain-b",
-                null,
-                null,
-                "PATCH_ROLLBACK",
-                null,
-                "rollback patches for domain-b",
-                null,
-                null,
-                false);
+        WorkflowRecord wf1Draft = record("wf-1", "payments-prod", WorkflowStatus.DRAFT, t1, t1);
+        store.create(wf1Draft);
 
-        store.save(domainAApply);
-        store.save(domainBRollback);
+        WorkflowRecord wf1Proposed = record("wf-1", "payments-prod", WorkflowStatus.PROPOSED, t1, t2);
+        store.update(wf1Proposed);
 
-        WorkflowState loadedA = store.loadByConversationIdAndDomainAndOperation("conv-1", "domain-a", "PATCH_APPLY").orElseThrow();
-        WorkflowState loadedB = store.loadByConversationIdAndDomainAndOperation("conv-1", "domain-b", "PATCH_ROLLBACK").orElseThrow();
+        WorkflowRecord wf1Awaiting = record("wf-1", "payments-prod", WorkflowStatus.AWAITING_APPROVAL, t1, t3);
+        store.update(wf1Awaiting);
 
-        assertEquals("domain-a", loadedA.targetDomain());
-        assertEquals("PATCH_APPLY", loadedA.requestedOperation());
+        WorkflowRecord wf2Queued = record("wf-2", "orders-prod", WorkflowStatus.QUEUED, t2, t4);
+        store.create(wf2Queued);
 
-        assertEquals("domain-b", loadedB.targetDomain());
-        assertEquals("PATCH_ROLLBACK", loadedB.requestedOperation());
+        assertEquals(WorkflowStatus.AWAITING_APPROVAL,
+                store.getByWorkflowId("wf-1").orElseThrow().currentState());
+        assertEquals("wf-1", store.getLatestByDomain("payments-prod").orElseThrow().workflowId());
+        assertEquals("wf-1", store.getActiveByDomain("payments-prod").orElseThrow().workflowId());
+
+        List<WorkflowRecord> all = store.listAll();
+        assertEquals(2, all.size());
+        assertEquals("wf-2", all.get(0).workflowId());
+
+        List<WorkflowRecord> pendingApproval = store.listByStatus(WorkflowStatus.AWAITING_APPROVAL);
+        assertEquals(1, pendingApproval.size());
+        assertEquals("wf-1", pendingApproval.get(0).workflowId());
+
+        List<WorkflowRecord> inExecution = store.listByStatus(WorkflowStatus.QUEUED);
+        assertEquals(1, inExecution.size());
+        assertEquals("wf-2", inExecution.get(0).workflowId());
     }
 
     @Test
-    void clearRemovesOnlyMatchingConversationDomainAndOperation() {
+    void activeByDomainIgnoresTerminalWorkflows() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
 
-        WorkflowState apply = WorkflowState.create(
-                "conv-2",
-                "user-1",
-                "PATCHING",
-                "APPLYING_PATCHES",
-                "IN_PROGRESS",
-                "domain-a",
-                null,
-                null,
-                "PATCH_APPLY",
-                null,
-                "apply",
-                null,
-                null,
-                false);
+        Instant t1 = Instant.parse("2026-04-23T11:00:00Z");
+        Instant t2 = Instant.parse("2026-04-23T11:10:00Z");
 
-        WorkflowState rollback = WorkflowState.create(
-                "conv-2",
-                "user-1",
-                "PATCHING",
-                "VERIFYING_STATUS",
-                "IN_PROGRESS",
-                "domain-a",
-                null,
-                null,
-                "PATCH_ROLLBACK",
-                null,
-                "rollback",
-                null,
-                null,
-                false);
+        store.create(record("wf-1", "inventory-prod", WorkflowStatus.AWAITING_APPROVAL, t1, t1));
+        store.create(record("wf-2", "inventory-prod", WorkflowStatus.COMPLETED, t2, t2));
 
-        store.save(apply);
-        store.save(rollback);
+        assertEquals("wf-2", store.getLatestByDomain("inventory-prod").orElseThrow().workflowId());
+        assertEquals("wf-1", store.getActiveByDomain("inventory-prod").orElseThrow().workflowId());
+    }
 
-        store.clear("conv-2", "domain-a", "PATCH_APPLY");
+    @Test
+    void domainQueriesAreCaseInsensitive() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        Instant now = Instant.parse("2026-04-23T12:00:00Z");
+        store.create(record("wf-1", "Payments-Prod", WorkflowStatus.AWAITING_APPROVAL, now, now));
 
-        assertTrue(store.loadByConversationIdAndDomainAndOperation("conv-2", "domain-a", "PATCH_APPLY").isEmpty());
-        assertTrue(store.loadByConversationIdAndDomainAndOperation("conv-2", "domain-a", "PATCH_ROLLBACK").isPresent());
+        assertTrue(store.getLatestByDomain("payments-prod").isPresent());
+        assertTrue(store.getActiveByDomain("PAYMENTS-PROD").isPresent());
+    }
+
+    private static WorkflowRecord record(String workflowId,
+                                         String domain,
+                                         WorkflowStatus status,
+                                         Instant createdAt,
+                                         Instant updatedAt) {
+        return new WorkflowRecord(
+                workflowId,
+                domain,
+                status,
+                createdAt,
+                updatedAt,
+                "conv-1",
+                "task-1",
+                "request",
+                null,
+                null,
+                null,
+                null,
+                List.of());
     }
 }

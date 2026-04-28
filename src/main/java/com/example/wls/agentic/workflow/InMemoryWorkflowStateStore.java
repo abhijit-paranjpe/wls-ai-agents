@@ -2,98 +2,145 @@ package com.example.wls.agentic.workflow;
 
 import io.helidon.service.registry.Service;
 
+import java.time.Instant;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.stream.Collectors;
 
 @Service.Singleton
 public class InMemoryWorkflowStateStore implements WorkflowStateStore {
 
-    private final ConcurrentMap<String, WorkflowState> statesByWorkflowKey = new ConcurrentHashMap<>();
+    private static final EnumSet<WorkflowStatus> TERMINAL_STATES = EnumSet.of(
+            WorkflowStatus.COMPLETED,
+            WorkflowStatus.FAILED,
+            WorkflowStatus.REJECTED,
+            WorkflowStatus.CANCELLED,
+            WorkflowStatus.APPROVAL_TIMED_OUT,
+            WorkflowStatus.EXECUTION_TIMED_OUT);
+
+    private static final Comparator<WorkflowRecord> RECENCY_ORDER =
+            Comparator.comparing(InMemoryWorkflowStateStore::safeUpdatedAt)
+                    .thenComparing(InMemoryWorkflowStateStore::safeCreatedAt);
+
+    private final Map<String, WorkflowRecord> recordsById = new ConcurrentHashMap<>();
 
     @Override
-    public Optional<WorkflowState> loadByConversationId(String conversationId) {
-        return loadLatestByConversationId(conversationId);
+    public WorkflowRecord create(WorkflowRecord workflowRecord) {
+        WorkflowRecord normalized = normalize(workflowRecord);
+        WorkflowRecord existing = recordsById.putIfAbsent(normalized.workflowId(), normalized);
+        if (existing != null) {
+            throw new IllegalArgumentException("Workflow already exists: " + normalized.workflowId());
+        }
+        return normalized;
     }
 
     @Override
-    public Optional<WorkflowState> loadLatestByConversationId(String conversationId) {
-        if (conversationId == null || conversationId.isBlank()) {
+    public WorkflowRecord update(WorkflowRecord workflowRecord) {
+        WorkflowRecord normalized = normalize(workflowRecord);
+        WorkflowRecord updated = recordsById.compute(normalized.workflowId(), (ignored, existing) -> {
+            if (existing == null) {
+                throw new IllegalArgumentException("Workflow not found: " + normalized.workflowId());
+            }
+            return normalized;
+        });
+        return Objects.requireNonNull(updated);
+    }
+
+    @Override
+    public Optional<WorkflowRecord> getByWorkflowId(String workflowId) {
+        if (workflowId == null || workflowId.isBlank()) {
             return Optional.empty();
         }
-        return statesByWorkflowKey.values().stream()
-                .filter(state -> conversationId.equals(state.conversationId()))
-                .max(Comparator.comparing(WorkflowState::updatedAt, Comparator.nullsLast(String::compareTo)));
+        return Optional.ofNullable(recordsById.get(workflowId));
     }
 
     @Override
-    public Optional<WorkflowState> loadByConversationIdAndDomain(String conversationId, String targetDomain) {
-        if (conversationId == null || conversationId.isBlank() || targetDomain == null || targetDomain.isBlank()) {
+    public Optional<WorkflowRecord> getLatestByDomain(String domain) {
+        String normalizedDomain = normalizeDomain(domain);
+        if (normalizedDomain == null) {
             return Optional.empty();
         }
-
-        return statesByWorkflowKey.values().stream()
-                .filter(state -> conversationId.equals(state.conversationId()))
-                .filter(state -> targetDomain.equalsIgnoreCase(state.targetDomain()))
-                .max(Comparator.comparing(WorkflowState::updatedAt, Comparator.nullsLast(String::compareTo)));
+        return recordsById.values().stream()
+                .filter(record -> normalizedDomain.equals(normalizeDomain(record.domain())))
+                .max(RECENCY_ORDER);
     }
 
     @Override
-    public Optional<WorkflowState> loadByConversationIdAndDomainAndOperation(String conversationId,
-                                                                              String targetDomain,
-                                                                              String requestedOperation) {
-        if (conversationId == null || conversationId.isBlank()
-                || targetDomain == null || targetDomain.isBlank()
-                || requestedOperation == null || requestedOperation.isBlank()) {
+    public Optional<WorkflowRecord> getActiveByDomain(String domain) {
+        String normalizedDomain = normalizeDomain(domain);
+        if (normalizedDomain == null) {
             return Optional.empty();
         }
-
-        return statesByWorkflowKey.values().stream()
-                .filter(state -> conversationId.equals(state.conversationId()))
-                .filter(state -> targetDomain.equalsIgnoreCase(state.targetDomain()))
-                .filter(state -> requestedOperation.equalsIgnoreCase(state.requestedOperation()))
-                .max(Comparator.comparing(WorkflowState::updatedAt, Comparator.nullsLast(String::compareTo)));
+        return recordsById.values().stream()
+                .filter(record -> normalizedDomain.equals(normalizeDomain(record.domain())))
+                .filter(record -> !isTerminal(record.currentState()))
+                .max(RECENCY_ORDER);
     }
 
     @Override
-    public void save(WorkflowState workflowState) {
-        if (workflowState == null || workflowState.conversationId() == null || workflowState.conversationId().isBlank()) {
-            return;
-        }
-        statesByWorkflowKey.put(buildKey(workflowState.conversationId(), workflowState.targetDomain(), workflowState.requestedOperation()), workflowState);
+    public List<WorkflowRecord> listAll() {
+        return recordsById.values().stream()
+                .sorted(RECENCY_ORDER.reversed())
+                .toList();
     }
 
     @Override
-    public void clear(String conversationId) {
-        if (conversationId == null || conversationId.isBlank()) {
-            return;
+    public List<WorkflowRecord> listByStatus(WorkflowStatus workflowStatus) {
+        if (workflowStatus == null) {
+            return List.of();
         }
-        List<String> keysToRemove = statesByWorkflowKey.entrySet().stream()
-                .filter(entry -> conversationId.equals(entry.getValue().conversationId()))
-                .map(java.util.Map.Entry::getKey)
-                .collect(Collectors.toList());
-        keysToRemove.forEach(statesByWorkflowKey::remove);
+        return recordsById.values().stream()
+                .filter(record -> workflowStatus == record.currentState())
+                .sorted(RECENCY_ORDER.reversed())
+                .toList();
     }
 
-    @Override
-    public void clear(String conversationId, String targetDomain, String requestedOperation) {
-        if (conversationId == null || conversationId.isBlank()) {
-            return;
-        }
-        statesByWorkflowKey.remove(buildKey(conversationId, targetDomain, requestedOperation));
+    private static boolean isTerminal(WorkflowStatus status) {
+        return status != null && TERMINAL_STATES.contains(status);
     }
 
-    private static String buildKey(String conversationId, String targetDomain, String requestedOperation) {
-        return normalize(conversationId) + "::" + normalize(targetDomain) + "::" + normalize(requestedOperation);
+    private static WorkflowRecord normalize(WorkflowRecord workflowRecord) {
+        Objects.requireNonNull(workflowRecord, "workflowRecord must not be null");
+        if (workflowRecord.workflowId() == null || workflowRecord.workflowId().isBlank()) {
+            throw new IllegalArgumentException("workflowId must not be blank");
+        }
+        if (workflowRecord.domain() == null || workflowRecord.domain().isBlank()) {
+            throw new IllegalArgumentException("domain must not be blank");
+        }
+        return new WorkflowRecord(
+                workflowRecord.workflowId(),
+                workflowRecord.domain(),
+                workflowRecord.currentState(),
+                workflowRecord.createdAt(),
+                workflowRecord.updatedAt(),
+                workflowRecord.conversationId(),
+                workflowRecord.taskId(),
+                workflowRecord.requestSummary(),
+                workflowRecord.approvalDecision(),
+                workflowRecord.approvalDecisionAt(),
+                workflowRecord.approvalChannel(),
+                workflowRecord.failureReason(),
+                workflowRecord.steps() == null ? List.of() : List.copyOf(workflowRecord.steps()));
     }
 
-    private static String normalize(String value) {
-        if (value == null || value.isBlank()) {
-            return "_";
+    private static String normalizeDomain(String domain) {
+        if (domain == null) {
+            return null;
         }
-        return value.trim().toLowerCase();
+        String normalized = domain.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static Instant safeUpdatedAt(WorkflowRecord record) {
+        return record.updatedAt() == null ? Instant.EPOCH : record.updatedAt();
+    }
+
+    private static Instant safeCreatedAt(WorkflowRecord record) {
+        return record.createdAt() == null ? Instant.EPOCH : record.createdAt();
     }
 }

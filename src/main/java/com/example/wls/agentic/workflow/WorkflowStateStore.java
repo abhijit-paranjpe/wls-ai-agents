@@ -1,22 +1,21 @@
 package com.example.wls.agentic.workflow;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface WorkflowStateStore {
 
-    Optional<WorkflowState> loadByConversationId(String conversationId);
+    WorkflowRecord create(WorkflowRecord workflowRecord);
 
-    Optional<WorkflowState> loadLatestByConversationId(String conversationId);
+    WorkflowRecord update(WorkflowRecord workflowRecord);
 
-    Optional<WorkflowState> loadByConversationIdAndDomain(String conversationId, String targetDomain);
+    Optional<WorkflowRecord> getByWorkflowId(String workflowId);
 
-    Optional<WorkflowState> loadByConversationIdAndDomainAndOperation(String conversationId,
-                                                                      String targetDomain,
-                                                                      String requestedOperation);
+    Optional<WorkflowRecord> getLatestByDomain(String domain);
 
-    void save(WorkflowState workflowState);
+    Optional<WorkflowRecord> getActiveByDomain(String domain);
 
-    void clear(String conversationId);
+    List<WorkflowRecord> listAll();
 
-    void clear(String conversationId, String targetDomain, String requestedOperation);
+    List<WorkflowRecord> listByStatus(WorkflowStatus workflowStatus);
 }
