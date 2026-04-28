@@ -24,18 +24,18 @@ public interface HumanApprovalAgent {
             ApprovalDecision decision = approvalSemaphore.awaitDecision(workflowId);
             return toOutcome(decision);
         } catch (CancellationException ignored) {
-            return "CANCELLED";
+            return "REJECTED";
         }
     }
 
     static String toOutcome(ApprovalDecision decision) {
         if (decision == null) {
-            return "CANCELLED";
+            return "REJECTED";
         }
         return switch (decision) {
             case APPROVE -> "APPROVED";
             case REJECT -> "REJECTED";
-            case CANCEL -> "CANCELLED";
+            case CANCEL -> "REJECTED";
         };
     }
 }

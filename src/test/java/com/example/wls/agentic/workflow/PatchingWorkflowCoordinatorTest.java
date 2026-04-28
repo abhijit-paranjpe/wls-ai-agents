@@ -1,22 +1,35 @@
 package com.example.wls.agentic.workflow;
 
-import com.example.wls.agentic.ai.WorkflowSupervisorAgent;
+import com.example.wls.agentic.ai.ApplyLatestPatchesWorkflowService;
+import com.example.wls.agentic.ai.RollbackLatestPatchesWorkflowService;
+import com.example.wls.agentic.ai.WorkflowExecutionSequenceAgent;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class PatchingWorkflowCoordinatorTest {
 
+    private static final ApplyLatestPatchesWorkflowService APPLY_SERVICE = new ApplyLatestPatchesWorkflowService();
+    private static final RollbackLatestPatchesWorkflowService ROLLBACK_SERVICE = new RollbackLatestPatchesWorkflowService();
+
     @Test
-    void createProposalPersistsDraftProposedAndAwaitingApproval() {
+    void createProposalDoesNotPersistWorkflowBeforeApproval() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
@@ -27,15 +40,10 @@ class PatchingWorkflowCoordinatorTest {
                 "Apply recommended PSU");
 
         assertTrue(result.created());
-        assertNotNull(result.workflowId());
-        assertNotNull(result.workflow());
-        assertEquals(WorkflowStatus.AWAITING_APPROVAL, result.workflow().currentState());
-        assertEquals("payments-prod", result.workflow().domain());
-        assertEquals("conv-1", result.workflow().conversationId());
-        assertEquals("task-1", result.workflow().taskId());
-
-        WorkflowRecord persisted = coordinator.getByWorkflowId(result.workflowId()).orElseThrow();
-        assertEquals(WorkflowStatus.AWAITING_APPROVAL, persisted.currentState());
+        assertEquals("payments-prod", result.proposalDomain());
+        assertEquals(null, result.workflowId());
+        assertEquals(null, result.workflow());
+        assertTrue(coordinator.listAll().isEmpty());
     }
 
     @Test
@@ -48,17 +56,27 @@ class PatchingWorkflowCoordinatorTest {
                 "conv-1",
                 "task-1",
                 "first request");
+        assertTrue(first.created());
+
+        WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                        "payments-prod",
+                        ApprovalDecision.APPROVE,
+                        WorkflowChannel.API,
+                        "conv-1",
+                        "task-1",
+                        "first request")
+                .orElseThrow();
+
         PatchingWorkflowProposalResult second = coordinator.createProposal(
                 "payments-prod",
                 "conv-2",
                 "task-2",
                 "second request");
 
-        assertTrue(first.created());
         assertFalse(second.created());
-        assertEquals(first.workflowId(), second.conflictWorkflowId());
-        assertEquals(first.workflowId(), second.workflow().workflowId());
-        assertEquals(WorkflowStatus.AWAITING_APPROVAL, second.workflow().currentState());
+        assertEquals(created.workflowId(), second.conflictWorkflowId());
+        assertEquals(created.workflowId(), second.workflow().workflowId());
+        assertEquals(WorkflowStatus.APPROVED, second.workflow().currentState());
     }
 
     @Test
@@ -66,11 +84,21 @@ class PatchingWorkflowCoordinatorTest {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
-        PatchingWorkflowProposalResult created = coordinator.createProposal(
+        PatchingWorkflowProposalResult proposal = coordinator.createProposal(
                 "payments-prod",
                 "conv-1",
                 "task-1",
                 "request");
+        assertTrue(proposal.created());
+
+        WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                        "payments-prod",
+                        ApprovalDecision.APPROVE,
+                        WorkflowChannel.CHAT,
+                        "conv-1",
+                        "task-1",
+                        "request")
+                .orElseThrow();
 
         assertEquals(created.workflowId(), coordinator.getLatestByDomain("payments-prod").orElseThrow().workflowId());
         assertEquals(created.workflowId(), coordinator.getActiveByDomain("payments-prod").orElseThrow().workflowId());
@@ -80,25 +108,24 @@ class PatchingWorkflowCoordinatorTest {
         assertEquals(created.workflowId(), all.get(0).workflowId());
 
         List<WorkflowSummary> pending = coordinator.listPendingApproval();
-        assertEquals(1, pending.size());
-        assertEquals(created.workflowId(), pending.get(0).workflowId());
+        assertTrue(pending.isEmpty());
 
-        assertTrue(coordinator.listInExecution().isEmpty());
+        assertEquals(1, coordinator.listInExecution().size());
 
         WorkflowRecord approved = new WorkflowRecord(
-                created.workflow().workflowId(),
-                created.workflow().domain(),
+                created.workflowId(),
+                created.domain(),
                 WorkflowStatus.APPROVED,
-                created.workflow().createdAt(),
-                created.workflow().updatedAt().plusSeconds(10),
-                created.workflow().conversationId(),
-                created.workflow().taskId(),
-                created.workflow().requestSummary(),
-                created.workflow().approvalDecision(),
-                created.workflow().approvalDecisionAt(),
-                created.workflow().approvalChannel(),
-                created.workflow().failureReason(),
-                created.workflow().steps());
+                created.createdAt(),
+                created.updatedAt().plusSeconds(10),
+                created.conversationId(),
+                created.taskId(),
+                created.requestSummary(),
+                created.approvalDecision(),
+                created.approvalDecisionAt(),
+                created.approvalChannel(),
+                created.failureReason(),
+                created.steps());
         store.update(approved);
 
         List<WorkflowSummary> inExecution = coordinator.listInExecution();
@@ -111,16 +138,13 @@ class PatchingWorkflowCoordinatorTest {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
-        PatchingWorkflowProposalResult created = coordinator.createProposal(
-                "payments-prod",
-                "conv-1",
-                "task-1",
-                "request");
-
-        WorkflowRecord approved = coordinator.applyApprovalDecision(
-                        created.workflowId(),
+        WorkflowRecord approved = coordinator.applyApprovalDecisionByDomain(
+                        "payments-prod",
                         ApprovalDecision.APPROVE,
-                        WorkflowChannel.API)
+                        WorkflowChannel.API,
+                        "conv-1",
+                        "task-1",
+                        "request")
                 .orElseThrow();
 
         assertEquals(WorkflowStatus.APPROVED, approved.currentState());
@@ -130,30 +154,129 @@ class PatchingWorkflowCoordinatorTest {
     }
 
     @Test
-    void submitApprovedWorkflowForExecutionTransitionsToCompletedAndReleasesLock() {
+    void submitApprovedWorkflowForExecutionMarksWorkflowCompletedAndReleasesLock() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         try {
+            WorkflowExecutionSequenceAgent sequenceAgent = mock(WorkflowExecutionSequenceAgent.class);
+            doAnswer(invocation -> {
+                String workflowId = invocation.getArgument(0, String.class);
+                WorkflowRecord current = store.getByWorkflowId(workflowId).orElseThrow();
+                Instant now = Instant.now();
+                store.update(new WorkflowRecord(
+                        current.workflowId(),
+                        current.domain(),
+                        current.currentState(),
+                        current.createdAt(),
+                        now,
+                        current.conversationId(),
+                        current.taskId(),
+                        current.requestSummary(),
+                        current.approvalDecision(),
+                        current.approvalDecisionAt(),
+                        current.approvalChannel(),
+                        current.failureReason(),
+                        List.of(
+                                new WorkflowStepRecord("stop servers", "stop servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(60), now.minusSeconds(50), "ok"),
+                                new WorkflowStepRecord("apply patches", "apply patches", WorkflowStepStatus.COMPLETED, now.minusSeconds(49), now.minusSeconds(30), "ok"),
+                                new WorkflowStepRecord("start servers", "start servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(29), now.minusSeconds(15), "ok"),
+                                new WorkflowStepRecord("verify patch level", "verify patch level", WorkflowStepStatus.COMPLETED, now.minusSeconds(14), now.minusSeconds(1), "ok"))));
+                return "ok";
+            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
+
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
-                    new WorkflowSupervisorAgent(),
-                    executor);
+                    sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
+                    executor,
+                    Duration.ofMillis(50));
 
-            PatchingWorkflowProposalResult created = coordinator.createProposal(
-                    "payments-prod",
-                    "conv-1",
-                    "task-1",
-                    "request");
-
-            coordinator.applyApprovalDecision(created.workflowId(), ApprovalDecision.APPROVE, WorkflowChannel.API);
+            WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                            "payments-prod",
+                            ApprovalDecision.APPROVE,
+                            WorkflowChannel.API,
+                            "conv-1",
+                            "task-1",
+                            "request")
+                    .orElseThrow();
 
             WorkflowRecord queued = coordinator.submitApprovedWorkflowForExecution(created.workflowId()).orElseThrow();
             assertEquals(WorkflowStatus.QUEUED, queued.currentState());
 
             WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
             assertEquals(WorkflowStatus.COMPLETED, terminal.currentState());
+            assertFalse(lockManager.isLocked("payments-prod"));
+            verify(sequenceAgent).run(
+                    created.workflowId(),
+                    "payments-prod",
+                    "Execute approved patching workflow for domain payments-prod",
+                    "Can you initiate stop servers for domain payments-prod and return host and pids in response?",
+                    APPLY_SERVICE.plan());
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void submitApprovedWorkflowForExecutionFailsWhenRequiredStepsAreMissing() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        try {
+            WorkflowExecutionSequenceAgent sequenceAgent = mock(WorkflowExecutionSequenceAgent.class);
+            doAnswer(invocation -> {
+                String workflowId = invocation.getArgument(0, String.class);
+                WorkflowRecord current = store.getByWorkflowId(workflowId).orElseThrow();
+                Instant now = Instant.now();
+                store.update(new WorkflowRecord(
+                        current.workflowId(),
+                        current.domain(),
+                        current.currentState(),
+                        current.createdAt(),
+                        now,
+                        current.conversationId(),
+                        current.taskId(),
+                        current.requestSummary(),
+                        current.approvalDecision(),
+                        current.approvalDecisionAt(),
+                        current.approvalChannel(),
+                        current.failureReason(),
+                        List.of(new WorkflowStepRecord(
+                                "stop servers",
+                                "stop servers",
+                                WorkflowStepStatus.COMPLETED,
+                                now.minusSeconds(20),
+                                now.minusSeconds(10),
+                                "ok"))));
+                return "partial";
+            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
+
+            PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
+                    store,
+                    lockManager,
+                    sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
+                    executor,
+                    Duration.ofMillis(50));
+
+            WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                            "payments-prod",
+                            ApprovalDecision.APPROVE,
+                            WorkflowChannel.API,
+                            "conv-1",
+                            "task-1",
+                            "request")
+                    .orElseThrow();
+
+            coordinator.submitApprovedWorkflowForExecution(created.workflowId()).orElseThrow();
+
+            WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
+            assertEquals(WorkflowStatus.FAILED, terminal.currentState());
+            assertTrue(terminal.failureReason().contains("Workflow did not complete required step"));
             assertFalse(lockManager.isLocked("payments-prod"));
         } finally {
             executor.shutdownNow();
@@ -164,25 +287,85 @@ class PatchingWorkflowCoordinatorTest {
     void submitApprovedWorkflowForExecutionFailureMarksFailedAndReleasesLock() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
         try {
+            WorkflowExecutionSequenceAgent sequenceAgent = mock(WorkflowExecutionSequenceAgent.class);
+            when(sequenceAgent.run(
+                    contains(""),
+                    contains(""),
+                    contains("Execute approved patching workflow"),
+                    contains("initiate stop servers"),
+                    org.mockito.ArgumentMatchers.any()))
+                    .thenThrow(new IllegalStateException("Controlled execution failure requested"));
+
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
-                    new WorkflowSupervisorAgent(),
-                    executor);
+                    sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
+                    executor,
+                    Duration.ofMillis(50));
 
-            PatchingWorkflowProposalResult created = coordinator.createProposal(
-                    "payments-prod",
-                    "conv-1",
-                    "task-1",
-                    "FORCE_FAIL");
-
-            coordinator.applyApprovalDecision(created.workflowId(), ApprovalDecision.APPROVE, WorkflowChannel.API);
+            WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                            "payments-prod",
+                            ApprovalDecision.APPROVE,
+                            WorkflowChannel.API,
+                            "conv-1",
+                            "task-1",
+                            "FORCE_FAIL")
+                    .orElseThrow();
             coordinator.submitApprovedWorkflowForExecution(created.workflowId());
 
             WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
             assertEquals(WorkflowStatus.FAILED, terminal.currentState());
+            assertTrue(terminal.failureReason().contains("Controlled execution failure requested"));
+            assertFalse(lockManager.isLocked("payments-prod"));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void submitApprovedWorkflowForExecutionReturnedFailedStatusMarksFailedAndReleasesLock() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        InMemoryDomainLockManager lockManager = new InMemoryDomainLockManager();
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        try {
+            WorkflowExecutionSequenceAgent sequenceAgent = mock(WorkflowExecutionSequenceAgent.class);
+            when(sequenceAgent.run(
+                    contains(""),
+                    contains(""),
+                    contains("Execute approved patching workflow"),
+                    contains("initiate stop servers"),
+                    org.mockito.ArgumentMatchers.any()))
+                    .thenReturn("""
+                            {"status":"failed","operation":"apply-recommended-patches","domain":"payments-prod","message":"Failed to submit job as there is an existing job running."}
+                            """);
+
+            PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
+                    store,
+                    lockManager,
+                    sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
+                    executor,
+                    Duration.ofMillis(50));
+
+            WorkflowRecord created = coordinator.applyApprovalDecisionByDomain(
+                            "payments-prod",
+                            ApprovalDecision.APPROVE,
+                            WorkflowChannel.API,
+                            "conv-1",
+                            "task-1",
+                            "request")
+                    .orElseThrow();
+
+            coordinator.submitApprovedWorkflowForExecution(created.workflowId()).orElseThrow();
+
+            WorkflowRecord terminal = waitForTerminalState(coordinator, created.workflowId());
+            assertEquals(WorkflowStatus.FAILED, terminal.currentState());
+            assertTrue(terminal.failureReason().contains("existing job running"));
             assertFalse(lockManager.isLocked("payments-prod"));
         } finally {
             executor.shutdownNow();
@@ -194,7 +377,7 @@ class PatchingWorkflowCoordinatorTest {
         WorkflowRecord latest = coordinator.getByWorkflowId(workflowId).orElseThrow();
         while (System.nanoTime() < deadline) {
             latest = coordinator.getByWorkflowId(workflowId).orElseThrow();
-            if (latest.currentState() == WorkflowStatus.COMPLETED || latest.currentState() == WorkflowStatus.FAILED) {
+            if (latest.currentState() == WorkflowStatus.FAILED || latest.currentState() == WorkflowStatus.COMPLETED) {
                 return latest;
             }
             try {

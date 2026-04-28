@@ -111,7 +111,6 @@ public class PatchingWorkflowEndpoint {
         return switch (workflow.currentState()) {
             case APPROVED -> "Approval recorded. Workflow is approved and can proceed to execution.";
             case REJECTED -> "Approval recorded. Workflow was rejected and is now terminal.";
-            case CANCELLED -> "Approval recorded. Workflow was cancelled and is now terminal.";
             default -> "Approval recorded.";
         };
     }

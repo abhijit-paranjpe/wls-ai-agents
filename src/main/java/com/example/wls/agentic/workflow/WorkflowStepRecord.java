@@ -8,7 +8,7 @@ import java.time.Instant;
 public record WorkflowStepRecord(
         String stepId,
         String name,
-        WorkflowStatus state,
+        WorkflowStepStatus state,
         Instant startedAt,
         Instant endedAt,
         String details) {

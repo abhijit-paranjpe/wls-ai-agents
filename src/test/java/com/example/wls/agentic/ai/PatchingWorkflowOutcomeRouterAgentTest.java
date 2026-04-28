@@ -10,13 +10,13 @@ class PatchingWorkflowOutcomeRouterAgentTest {
     void routeReturnsSupportedOutcomes() {
         assertEquals("APPROVED", PatchingWorkflowOutcomeRouterAgent.route("approved"));
         assertEquals("REJECTED", PatchingWorkflowOutcomeRouterAgent.route("REJECTED"));
-        assertEquals("CANCELLED", PatchingWorkflowOutcomeRouterAgent.route("cancelled"));
+        assertEquals("REJECTED", PatchingWorkflowOutcomeRouterAgent.route("cancelled"));
     }
 
     @Test
-    void routeFallsBackToCancelledForUnsupportedOrMissingValues() {
-        assertEquals("CANCELLED", PatchingWorkflowOutcomeRouterAgent.route("maybe"));
-        assertEquals("CANCELLED", PatchingWorkflowOutcomeRouterAgent.route("   "));
-        assertEquals("CANCELLED", PatchingWorkflowOutcomeRouterAgent.route(null));
+    void routeFallsBackToRejectedForUnsupportedOrMissingValues() {
+        assertEquals("REJECTED", PatchingWorkflowOutcomeRouterAgent.route("maybe"));
+        assertEquals("REJECTED", PatchingWorkflowOutcomeRouterAgent.route("   "));
+        assertEquals("REJECTED", PatchingWorkflowOutcomeRouterAgent.route(null));
     }
 }
