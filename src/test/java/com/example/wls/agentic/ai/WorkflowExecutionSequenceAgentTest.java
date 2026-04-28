@@ -3,6 +3,8 @@ package com.example.wls.agentic.ai;
 import com.example.wls.agentic.workflow.WorkflowStateMutationService;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -14,6 +16,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class WorkflowExecutionSequenceAgentTest {
+
+    private static final WorkflowExecutionPlan APPLY_PLAN = new WorkflowExecutionPlan(
+            "apply-latest-patches-workflow",
+            List.of(
+                    new WorkflowExecutionStep(1, "initiate-stop-servers", "step1 %s", WorkflowStepAgentType.DOMAIN_RUNTIME, null),
+                    new WorkflowExecutionStep(2, "monitor-stop-completion", "step2 %s", WorkflowStepAgentType.MONITORING, null),
+                    new WorkflowExecutionStep(3, "apply-latest-patches", "step3 %s", WorkflowStepAgentType.PATCHING, null),
+                    new WorkflowExecutionStep(4, "monitor-patch-completion", "step4 %s", WorkflowStepAgentType.MONITORING, "apply-latest-patches"),
+                    new WorkflowExecutionStep(5, "initiate-start-servers", "step5 %s", WorkflowStepAgentType.DOMAIN_RUNTIME, null),
+                    new WorkflowExecutionStep(6, "monitor-start-completion", "step6 %s", WorkflowStepAgentType.MONITORING, null),
+                    new WorkflowExecutionStep(7, "verify-domain-patch-level", "step7 %s", WorkflowStepAgentType.PATCHING, null)));
 
     @Test
     void monitorStepPollsUntilCompletedBeforeAdvancing() {
@@ -55,7 +68,7 @@ class WorkflowExecutionSequenceAgentTest {
                 patchingAgent,
                 workflowStateMutationService);
 
-        String response = agent.run("wf-1", "payments-prod", "execute", "start");
+        String response = agent.run("wf-1", "payments-prod", "execute", "start", APPLY_PLAN);
 
         verify(monitoringAgent, times(3)).analyzeRequest(anyString());
         verify(patchingAgent, times(2)).analyzeRequest(anyString());
@@ -95,7 +108,7 @@ class WorkflowExecutionSequenceAgentTest {
                 patchingAgent,
                 workflowStateMutationService);
 
-        String response = agent.run("wf-2", "payments-prod", "execute", "start");
+        String response = agent.run("wf-2", "payments-prod", "execute", "start", APPLY_PLAN);
 
         verify(patchingAgent, never()).analyzeRequest(anyString());
         assertTrue(response.contains("\"status\":\"failed\""));

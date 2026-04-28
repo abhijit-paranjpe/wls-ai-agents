@@ -76,6 +76,12 @@ final class ChatResponseAssembler {
 
         try (JsonReader reader = jakarta.json.Json.createReader(new StringReader(trimmed))) {
             JsonObject object = reader.readObject();
+
+            String patchStatusMessage = normalizePatchStatusMessage(object);
+            if (!isBlank(patchStatusMessage)) {
+                return patchStatusMessage;
+            }
+
             String status = getString(object, "status");
             String host = getString(object, "host");
             String pid = getString(object, "pid");
@@ -155,6 +161,71 @@ final class ChatResponseAssembler {
         } catch (RuntimeException ex) {
             return rawMessage;
         }
+    }
+
+    private static String normalizePatchStatusMessage(JsonObject object) {
+        if (object == null) {
+            return null;
+        }
+
+        boolean hasPatchStatusShape = object.containsKey("isDomainOnLatestPatches")
+                || object.containsKey("applicablePatches")
+                || object.containsKey("results");
+        if (!hasPatchStatusShape) {
+            return null;
+        }
+
+        String domain = firstNonBlank(getString(object, "domainName"), getString(object, "domain"), "target domain");
+        boolean onLatest = object.containsKey("isDomainOnLatestPatches")
+                && !object.isNull("isDomainOnLatestPatches")
+                && object.getBoolean("isDomainOnLatestPatches", false);
+
+        JsonValue patchArray = object.get("applicablePatches");
+        if ((patchArray == null || patchArray.getValueType() != JsonValue.ValueType.ARRAY)
+                && object.containsKey("results")
+                && !object.isNull("results")
+                && object.get("results").getValueType() == JsonValue.ValueType.ARRAY
+                && !object.getJsonArray("results").isEmpty()) {
+            JsonValue firstResult = object.getJsonArray("results").get(0);
+            if (firstResult != null
+                    && firstResult.getValueType() == JsonValue.ValueType.OBJECT
+                    && firstResult.asJsonObject().containsKey("applicablePatches")) {
+                patchArray = firstResult.asJsonObject().get("applicablePatches");
+            }
+        }
+
+        if (onLatest) {
+            return "Domain '" + domain + "' is already on the latest patches.";
+        }
+
+        if (patchArray != null && patchArray.getValueType() == JsonValue.ValueType.ARRAY && !patchArray.asJsonArray().isEmpty()) {
+            String details = patchArray.asJsonArray().stream()
+                    .filter(item -> item != null && item.getValueType() == JsonValue.ValueType.OBJECT)
+                    .map(item -> item.asJsonObject())
+                    .map(item -> {
+                        String id = firstNonBlank(getString(item, "id"), getString(item, "patch_id"));
+                        String reason = getString(item, "reason");
+                        if (isBlank(id) && isBlank(reason)) {
+                            return null;
+                        }
+                        if (isBlank(id)) {
+                            return "- " + reason;
+                        }
+                        if (isBlank(reason)) {
+                            return "- Patch " + id;
+                        }
+                        return "- Patch " + id + ": " + reason;
+                    })
+                    .filter(line -> !isBlank(line))
+                    .reduce((a, b) -> a + "\n" + b)
+                    .orElse(null);
+
+            if (!isBlank(details)) {
+                return "Domain '" + domain + "' is not on the latest patches. Applicable patches:\n" + details;
+            }
+        }
+
+        return "Domain '" + domain + "' is not on the latest patches.";
     }
 
     static String formatPatchingProposalDetails(String rawDetails) {

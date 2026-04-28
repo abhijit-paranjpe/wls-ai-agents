@@ -1,6 +1,9 @@
 package com.example.wls.agentic.workflow;
 
 import com.example.wls.agentic.ai.WorkflowExecutionSequenceAgent;
+import com.example.wls.agentic.ai.ApplyLatestPatchesWorkflowService;
+import com.example.wls.agentic.ai.RollbackLatestPatchesWorkflowService;
+import com.example.wls.agentic.ai.WorkflowExecutionPlan;
 import io.helidon.service.registry.Service;
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -37,16 +40,22 @@ public class PatchingWorkflowCoordinator {
     private final WorkflowStateStore workflowStateStore;
     private final DomainLockManager domainLockManager;
     private final WorkflowExecutionSequenceAgent workflowExecutionSequenceAgent;
+    private final ApplyLatestPatchesWorkflowService applyLatestPatchesWorkflowService;
+    private final RollbackLatestPatchesWorkflowService rollbackLatestPatchesWorkflowService;
     private final ScheduledExecutorService workflowExecutor;
     private final Duration completionEvaluationTimeout;
 
     @Service.Inject
     public PatchingWorkflowCoordinator(WorkflowStateStore workflowStateStore,
                                        DomainLockManager domainLockManager,
-                                       WorkflowExecutionSequenceAgent workflowExecutionSequenceAgent) {
+                                       WorkflowExecutionSequenceAgent workflowExecutionSequenceAgent,
+                                       ApplyLatestPatchesWorkflowService applyLatestPatchesWorkflowService,
+                                       RollbackLatestPatchesWorkflowService rollbackLatestPatchesWorkflowService) {
         this(workflowStateStore,
                 domainLockManager,
                 workflowExecutionSequenceAgent,
+                applyLatestPatchesWorkflowService,
+                rollbackLatestPatchesWorkflowService,
                 Executors.newScheduledThreadPool(2),
                 DEFAULT_COMPLETION_EVALUATION_TIMEOUT);
     }
@@ -55,6 +64,8 @@ public class PatchingWorkflowCoordinator {
         this(workflowStateStore,
                 new InMemoryDomainLockManager(),
                 null,
+                null,
+                null,
                 Executors.newScheduledThreadPool(2),
                 DEFAULT_COMPLETION_EVALUATION_TIMEOUT);
     }
@@ -62,11 +73,15 @@ public class PatchingWorkflowCoordinator {
     PatchingWorkflowCoordinator(WorkflowStateStore workflowStateStore,
                                 DomainLockManager domainLockManager,
                                 WorkflowExecutionSequenceAgent workflowExecutionSequenceAgent,
+                                ApplyLatestPatchesWorkflowService applyLatestPatchesWorkflowService,
+                                RollbackLatestPatchesWorkflowService rollbackLatestPatchesWorkflowService,
                                 ScheduledExecutorService workflowExecutor,
                                 Duration completionEvaluationTimeout) {
         this.workflowStateStore = Objects.requireNonNull(workflowStateStore, "workflowStateStore must not be null");
         this.domainLockManager = Objects.requireNonNull(domainLockManager, "domainLockManager must not be null");
         this.workflowExecutionSequenceAgent = workflowExecutionSequenceAgent;
+        this.applyLatestPatchesWorkflowService = applyLatestPatchesWorkflowService;
+        this.rollbackLatestPatchesWorkflowService = rollbackLatestPatchesWorkflowService;
         this.workflowExecutor = Objects.requireNonNull(workflowExecutor, "workflowExecutor must not be null");
         this.completionEvaluationTimeout = completionEvaluationTimeout == null
                 ? DEFAULT_COMPLETION_EVALUATION_TIMEOUT
@@ -278,12 +293,14 @@ public class PatchingWorkflowCoordinator {
             if (workflowExecutionSequenceAgent == null) {
                 throw new IllegalStateException("WorkflowExecutionSequenceAgent is not configured");
             }
+            WorkflowExecutionPlan executionPlan = resolveExecutionPlan(inExecution);
             String sequenceResponse = workflowExecutionSequenceAgent.run(
                     inExecution.workflowId(),
                     inExecution.domain(),
                     "Execute approved patching workflow for domain " + inExecution.domain(),
                     "Can you initiate stop servers for domain " + inExecution.domain()
-                            + " and return host and pids in response?");
+                            + " and return host and pids in response?",
+                    executionPlan);
 
             if (isFailedStatus(sequenceResponse)) {
                 String reason = extractMessage(sequenceResponse);
@@ -406,6 +423,9 @@ public class PatchingWorkflowCoordinator {
         if (candidate.contains("apply") && candidate.contains("patch")) {
             return "apply patches";
         }
+        if (candidate.contains("rollback") && candidate.contains("patch")) {
+            return "apply patches";
+        }
         if (candidate.contains("start") && candidate.contains("server")) {
             return "start servers";
         }
@@ -453,5 +473,26 @@ public class PatchingWorkflowCoordinator {
         if (workflowId == null || workflowId.isBlank()) {
             throw new IllegalArgumentException("workflowId must not be blank");
         }
+    }
+
+    private WorkflowExecutionPlan resolveExecutionPlan(WorkflowRecord record) {
+        String summary = record == null || record.requestSummary() == null
+                ? ""
+                : record.requestSummary().toLowerCase(Locale.ROOT);
+        boolean rollbackRequested = summary.contains("rollback")
+                || summary.contains("roll back")
+                || summary.contains("revert patch");
+
+        if (rollbackRequested) {
+            if (rollbackLatestPatchesWorkflowService == null) {
+                throw new IllegalStateException("RollbackLatestPatchesWorkflowService is not configured");
+            }
+            return rollbackLatestPatchesWorkflowService.plan();
+        }
+
+        if (applyLatestPatchesWorkflowService == null) {
+            throw new IllegalStateException("ApplyLatestPatchesWorkflowService is not configured");
+        }
+        return applyLatestPatchesWorkflowService.plan();
     }
 }

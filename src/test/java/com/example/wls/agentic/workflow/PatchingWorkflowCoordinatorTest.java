@@ -1,5 +1,7 @@
 package com.example.wls.agentic.workflow;
 
+import com.example.wls.agentic.ai.ApplyLatestPatchesWorkflowService;
+import com.example.wls.agentic.ai.RollbackLatestPatchesWorkflowService;
 import com.example.wls.agentic.ai.WorkflowExecutionSequenceAgent;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +24,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PatchingWorkflowCoordinatorTest {
+
+    private static final ApplyLatestPatchesWorkflowService APPLY_SERVICE = new ApplyLatestPatchesWorkflowService();
+    private static final RollbackLatestPatchesWorkflowService ROLLBACK_SERVICE = new RollbackLatestPatchesWorkflowService();
 
     @Test
     void createProposalDoesNotPersistWorkflowBeforeApproval() {
@@ -178,12 +183,14 @@ class PatchingWorkflowCoordinatorTest {
                                 new WorkflowStepRecord("start servers", "start servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(29), now.minusSeconds(15), "ok"),
                                 new WorkflowStepRecord("verify patch level", "verify patch level", WorkflowStepStatus.COMPLETED, now.minusSeconds(14), now.minusSeconds(1), "ok"))));
                 return "ok";
-            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString());
+            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
 
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
                     sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
                     executor,
                     Duration.ofMillis(50));
 
@@ -206,7 +213,8 @@ class PatchingWorkflowCoordinatorTest {
                     created.workflowId(),
                     "payments-prod",
                     "Execute approved patching workflow for domain payments-prod",
-                    "Can you initiate stop servers for domain payments-prod and return host and pids in response?");
+                    "Can you initiate stop servers for domain payments-prod and return host and pids in response?",
+                    APPLY_SERVICE.plan());
         } finally {
             executor.shutdownNow();
         }
@@ -244,12 +252,14 @@ class PatchingWorkflowCoordinatorTest {
                                 now.minusSeconds(10),
                                 "ok"))));
                 return "partial";
-            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString());
+            }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
 
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
                     sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
                     executor,
                     Duration.ofMillis(50));
 
@@ -284,13 +294,16 @@ class PatchingWorkflowCoordinatorTest {
                     contains(""),
                     contains(""),
                     contains("Execute approved patching workflow"),
-                    contains("initiate stop servers")))
+                    contains("initiate stop servers"),
+                    org.mockito.ArgumentMatchers.any()))
                     .thenThrow(new IllegalStateException("Controlled execution failure requested"));
 
             PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(
                     store,
                     lockManager,
                     sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
                     executor,
                     Duration.ofMillis(50));
 
@@ -324,7 +337,8 @@ class PatchingWorkflowCoordinatorTest {
                     contains(""),
                     contains(""),
                     contains("Execute approved patching workflow"),
-                    contains("initiate stop servers")))
+                    contains("initiate stop servers"),
+                    org.mockito.ArgumentMatchers.any()))
                     .thenReturn("""
                             {"status":"failed","operation":"apply-recommended-patches","domain":"payments-prod","message":"Failed to submit job as there is an existing job running."}
                             """);
@@ -333,6 +347,8 @@ class PatchingWorkflowCoordinatorTest {
                     store,
                     lockManager,
                     sequenceAgent,
+                    APPLY_SERVICE,
+                    ROLLBACK_SERVICE,
                     executor,
                     Duration.ofMillis(50));
 

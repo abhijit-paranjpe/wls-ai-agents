@@ -293,8 +293,8 @@
             const userText = String(renderedText || '').trim();
             if (userText) {
                 bubble.style.cursor = 'pointer';
-                bubble.title = 'Click to resend this message';
-                bubble.addEventListener('click', () => sendPrompt(userText));
+                bubble.title = 'Double-click to resend this message';
+                bubble.addEventListener('dblclick', () => sendPrompt(userText));
             }
         }
 

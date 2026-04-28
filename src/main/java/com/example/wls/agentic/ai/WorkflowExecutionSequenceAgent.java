@@ -3,6 +3,7 @@ package com.example.wls.agentic.ai;
 import com.example.wls.agentic.workflow.WorkflowStateMutationService;
 import io.helidon.service.registry.Service;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.logging.Logger;
@@ -17,14 +18,6 @@ public class WorkflowExecutionSequenceAgent {
     private static final Pattern JSON_MESSAGE_PATTERN = Pattern.compile("\\\"message\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"", Pattern.CASE_INSENSITIVE);
     private static final int MAX_MONITOR_POLL_ATTEMPTS = 120;
     private static final long MONITOR_POLL_SLEEP_MILLIS = 120_000L;
-
-    private static final String STEP_1_TEMPLATE = "Stop all relevant servers for domain %s and return strict JSON including hostPids for every async stop operation.";
-    private static final String STEP_2_TEMPLATE = "Using hostPids from lastResponse, monitor stop completion for domain %s and return strict JSON with factual status only.";
-    private static final String STEP_3_TEMPLATE = "Apply the latest recommended patches for domain %s and return strict JSON with factual execution details and any tracking identifiers produced by tools.";
-    private static final String STEP_4_TEMPLATE = "Using tracking data from lastResponse, monitor patch application completion for domain %s and return strict JSON with factual status only.";
-    private static final String STEP_5_TEMPLATE = "Start all required servers for domain %s and return strict JSON including hostPids for every async start operation.";
-    private static final String STEP_6_TEMPLATE = "Using hostPids from lastResponse, monitor server start completion for domain %s and return strict JSON with factual status only.";
-    private static final String STEP_7_TEMPLATE = "Verify the current patch level for domain %s and return strict JSON with factual verification results only.";
 
     private final DomainRuntimeAgent domainRuntimeAgent;
     private final MonitoringAgent monitoringAgent;
@@ -46,38 +39,34 @@ public class WorkflowExecutionSequenceAgent {
     public String run(String workflowId,
                       String targetDomain,
                       String instruction,
-                      String question) {
+                      String question,
+                      WorkflowExecutionPlan executionPlan) {
         LOGGER.info(() -> "[workflow=" + workflowId + "] Starting deterministic execution sequence for domain=" + targetDomain);
         LOGGER.fine(() -> "[workflow=" + workflowId + "] instruction=" + safe(instruction) + " | initialQuestion=" + safe(question));
+        Objects.requireNonNull(executionPlan, "executionPlan must not be null");
+        List<WorkflowExecutionStep> steps = executionPlan.steps();
+        if (steps.isEmpty()) {
+            throw new IllegalArgumentException("executionPlan.steps must not be empty");
+        }
 
         String lastResponse = null;
 
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 1, "initiate-stop-servers",
-                STEP_1_TEMPLATE.formatted(targetDomain), domainRuntimeAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 2, "monitor-stop-completion",
-                STEP_2_TEMPLATE.formatted(targetDomain), monitoringAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 3, "apply-latest-patches",
-                STEP_3_TEMPLATE.formatted(targetDomain), patchingAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 4, "monitor-patch-completion",
-                STEP_4_TEMPLATE.formatted(targetDomain), monitoringAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 5, "initiate-start-servers",
-                STEP_5_TEMPLATE.formatted(targetDomain), domainRuntimeAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 6, "monitor-start-completion",
-                STEP_6_TEMPLATE.formatted(targetDomain), monitoringAgent::analyzeRequest, lastResponse);
-        if (isFailure(lastResponse)) return lastResponse;
-
-        lastResponse = executeStep(workflowId, targetDomain, instruction, 7, "verify-domain-patch-level",
-                STEP_7_TEMPLATE.formatted(targetDomain), patchingAgent::analyzeRequest, lastResponse);
+        for (WorkflowExecutionStep step : steps) {
+            AgentCaller caller = resolveCaller(step.agentType());
+            String questionTemplate = step.stepQuestionTemplate().formatted(targetDomain);
+            lastResponse = executeStep(workflowId,
+                    targetDomain,
+                    instruction,
+                    step.stepNumber(),
+                    step.stepName(),
+                    questionTemplate,
+                    caller,
+                    lastResponse,
+                    step.asyncOriginStepToCompleteOnSuccess());
+            if (isFailure(lastResponse)) {
+                return lastResponse;
+            }
+        }
 
         String finalResponse = lastResponse;
         LOGGER.info(() -> "[workflow=" + workflowId + "] Deterministic execution sequence completed. Final response=" + compact(finalResponse));
@@ -91,7 +80,8 @@ public class WorkflowExecutionSequenceAgent {
                                String stepName,
                                String stepQuestion,
                                AgentCaller caller,
-                               String lastResponse) {
+                               String lastResponse,
+                               String asyncOriginStepToCompleteOnSuccess) {
         String composedQuestion = """
                 %s
 
@@ -123,9 +113,9 @@ public class WorkflowExecutionSequenceAgent {
             workflowStateMutationService.markStepFailedAndFailWorkflow(workflowId, stepName, extractMessage(response));
             LOGGER.warning(() -> "[workflow=" + workflowId + "] Step " + stepNumber + " (" + stepName + ") FAILED. Halting sequence.");
         } else {
-            if (shouldMarkStepCompleted(stepName, response)) {
+            if (shouldMarkStepCompleted(stepName, response, asyncOriginStepToCompleteOnSuccess)) {
                 workflowStateMutationService.markStepCompleted(workflowId, stepName, extractMessage(response));
-                completeRelatedAsyncOriginStep(workflowId, stepName, response);
+                completeRelatedAsyncOriginStep(workflowId, asyncOriginStepToCompleteOnSuccess, response);
             } else {
                 LOGGER.info(() -> "[workflow=" + workflowId + "] Step " + stepNumber + " (" + stepName
                         + ") remains IN_EXECUTION while async work is in progress.");
@@ -225,17 +215,31 @@ public class WorkflowExecutionSequenceAgent {
         return compact(response);
     }
 
-    private static boolean shouldMarkStepCompleted(String stepName, String response) {
-        if (!"apply-latest-patches".equalsIgnoreCase(stepName)) {
+    private static boolean shouldMarkStepCompleted(String stepName,
+                                                   String response,
+                                                   String asyncOriginStepToCompleteOnSuccess) {
+        if (stepName == null || asyncOriginStepToCompleteOnSuccess == null) {
             return true;
         }
         return !isAsyncPatchApplyInProgress(response);
     }
 
-    private void completeRelatedAsyncOriginStep(String workflowId, String stepName, String response) {
-        if ("monitor-patch-completion".equalsIgnoreCase(stepName)) {
-            workflowStateMutationService.markStepCompleted(workflowId, "apply-latest-patches", extractMessage(response));
+    private void completeRelatedAsyncOriginStep(String workflowId,
+                                                String asyncOriginStepToCompleteOnSuccess,
+                                                String response) {
+        if (asyncOriginStepToCompleteOnSuccess != null && !asyncOriginStepToCompleteOnSuccess.isBlank()) {
+            workflowStateMutationService.markStepCompleted(workflowId,
+                    asyncOriginStepToCompleteOnSuccess,
+                    extractMessage(response));
         }
+    }
+
+    private AgentCaller resolveCaller(WorkflowStepAgentType type) {
+        return switch (type) {
+            case DOMAIN_RUNTIME -> domainRuntimeAgent::analyzeRequest;
+            case MONITORING -> monitoringAgent::analyzeRequest;
+            case PATCHING -> patchingAgent::analyzeRequest;
+        };
     }
 
     private static boolean isAsyncPatchApplyInProgress(String response) {

@@ -1127,11 +1127,13 @@ public class ChatBotEndpoint {
                                                         TaskContext context,
                                                         String summary,
                                                         String memoryKey) {
+        boolean rollbackRequested = isRollbackWorkflowProposalRequest(normalizeReply(question));
         String targetDomain = context == null ? null : context.targetDomain();
         if (isBlank(targetDomain)) {
             return new AgentResponse(
                     "I can create a patching workflow proposal, but I need the target domain. "
-                            + "Please specify a domain, for example: 'Apply recommended patches to domain payments-prod'.",
+                            + "Please specify a domain, for example: 'Apply recommended patches to domain payments-prod'"
+                            + " or 'Rollback latest patches from domain payments-prod'.",
                     summary,
                     context == null ? TaskContext.empty() : context,
                     null);
@@ -1150,11 +1152,29 @@ public class ChatBotEndpoint {
         String message;
         ResponseMetadata metadata = null;
         if (proposal.created()) {
-            String proposalDetails = fetchPatchingProposalDetails(targetDomain);
-            message = "Created patching workflow proposal for domain '" + targetDomain + "'.\n"
-                    + "Following patches will be applied to the domain:\n"
-                    + proposalDetails + "\n\n"
-                    + "Use workflow actions to approve, reject, or cancel this proposal.";
+            String proposalDetails = fetchPatchingProposalDetails(targetDomain, rollbackRequested);
+            if (rollbackRequested) {
+                String rollbackSteps = rollbackWorkflowStepsSummary();
+                if (isNoPatchListDetails(proposalDetails)) {
+                    message = "Created rollback workflow proposal for domain '" + targetDomain + "'.\n"
+                            + "Rollback workflow steps:\n"
+                            + rollbackSteps + "\n\n"
+                            + "Specific patches to roll back will be determined during workflow execution.\n\n"
+                            + "Use workflow actions to approve, reject, or cancel this proposal.";
+                } else {
+                    message = "Created rollback workflow proposal for domain '" + targetDomain + "'.\n"
+                            + "Following latest patches will be rolled back from the domain:\n"
+                            + proposalDetails + "\n\n"
+                            + "Rollback workflow steps:\n"
+                            + rollbackSteps + "\n\n"
+                            + "Use workflow actions to approve, reject, or cancel this proposal.";
+                }
+            } else {
+                message = "Created patching workflow proposal for domain '" + targetDomain + "'.\n"
+                        + "Following patches will be applied to the domain:\n"
+                        + proposalDetails + "\n\n"
+                        + "Use workflow actions to approve, reject, or cancel this proposal.";
+            }
             metadata = metadataWithActions(List.of(
                     domainWorkflowAction("approve", targetDomain),
                     domainWorkflowAction("reject", targetDomain),
@@ -1175,10 +1195,10 @@ public class ChatBotEndpoint {
         return new AgentResponse(message, summary, responseContext, metadata);
     }
 
-    private String fetchPatchingProposalDetails(String targetDomain) {
+    private String fetchPatchingProposalDetails(String targetDomain, boolean rollbackRequested) {
         try {
-            String prompt = "Use domain-patch-status for domain " + targetDomain
-                    + " and list only applicable patches to apply now. "
+            String prompt = "Use domain-patch-status for domain " + targetDomain + " and list only applicable patches to "
+                    + (rollbackRequested ? "rollback now. " : "apply now. ")
                     + "Return concise patch identifiers and one-line reason for each. "
                     + "Do not include approve/reject/cancel workflow action hints in the response.";
             String details = patchingAgent.analyzeRequest(prompt);
@@ -1189,6 +1209,22 @@ public class ChatBotEndpoint {
                     ex);
             return "- Unable to retrieve patch list details right now.";
         }
+    }
+
+    private static boolean isNoPatchListDetails(String details) {
+        if (isBlank(details)) {
+            return true;
+        }
+        String normalized = details.trim().toLowerCase();
+        return normalized.contains("no recommended patches reported")
+                || normalized.contains("unable to retrieve patch list details");
+    }
+
+    private static String rollbackWorkflowStepsSummary() {
+        return "- Stop all relevant servers\n"
+                + "- Roll back latest patches\n"
+                + "- Start all required servers\n"
+                + "- Verify removed patches";
     }
 
     private AgentResponse handleWorkflowApprovalRequest(String question,
@@ -1235,13 +1271,16 @@ public class ChatBotEndpoint {
             String approvalDomain = !isBlank(domainFromQuestion)
                     ? domainFromQuestion
                     : context.targetDomain();
+            String workflowSummaryForApproval = firstNonBlank(
+                    context == null ? null : context.lastUserRequest(),
+                    question);
             updated = workflowCoordinator.applyApprovalDecisionByDomain(
                     approvalDomain,
                     decision,
                     WorkflowChannel.CHAT,
                     context == null ? null : context.conversationId(),
                     context == null ? null : context.taskId(),
-                    truncate(question, MAX_CONSTRAINTS_CHARS));
+                    truncate(workflowSummaryForApproval, MAX_CONSTRAINTS_CHARS));
         } else {
             updated = Optional.empty();
         }
@@ -1389,6 +1428,7 @@ public class ChatBotEndpoint {
         List<String> completedSteps = orderedCompletedSteps(record, steps);
         String inProgress = inferInProgressStep(record);
         String failedStep = inferFailedStep(record);
+        boolean rollbackWorkflow = isRollbackWorkflow(record);
 
         if ((record.currentState() == WorkflowStatus.FAILED
                 || record.currentState() == WorkflowStatus.EXECUTION_TIMED_OUT)
@@ -1423,23 +1463,58 @@ public class ChatBotEndpoint {
             markdown.append("- ")
                     .append(icon)
                     .append(" ")
-                    .append(humanizeStepName(step))
+                    .append(humanizeStepName(step, rollbackWorkflow))
                     .append("\n");
         }
         return markdown.toString().trim();
     }
 
-    private static String humanizeStepName(String step) {
+    private static String humanizeStepName(String step, boolean rollbackWorkflow) {
         if (isBlank(step)) {
             return "Unknown step";
         }
         return switch (step) {
             case "stop servers" -> "Stop servers";
-            case "apply patches" -> "Apply patches";
+            case "apply patches" -> rollbackWorkflow ? "Roll back latest patches" : "Apply patches";
             case "start servers" -> "Start servers";
-            case "verify patch level" -> "Verify patch level";
+            case "verify patch level" -> rollbackWorkflow ? "Verify removed patches" : "Verify patch level";
             default -> step;
         };
+    }
+
+    private static boolean isRollbackWorkflow(WorkflowRecord record) {
+        if (record == null) {
+            return false;
+        }
+        if (record.steps() != null) {
+            boolean rollbackStepPresent = record.steps().stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(step -> containsRollbackSignal(step.name()) || containsRollbackSignal(step.details()));
+            if (rollbackStepPresent) {
+                return true;
+            }
+        }
+
+        String failureReason = safe(record.failureReason()).toLowerCase();
+        if (containsRollbackSignal(failureReason)) {
+            return true;
+        }
+
+        String summary = safe(record.requestSummary()).toLowerCase();
+        return containsRollbackSignal(summary);
+    }
+
+    private static boolean containsRollbackSignal(String value) {
+        if (isBlank(value)) {
+            return false;
+        }
+        String lower = value.toLowerCase();
+        return lower.contains("rollback-latest-patches")
+                || lower.contains("rollback")
+                || lower.contains("roll back")
+                || lower.contains("revert")
+                || lower.contains("\"operation\":\"rollback-latest-patches\"")
+                || lower.contains("\"operation\": \"rollback-latest-patches\"");
     }
 
     private static String renderInExecutionProgress(List<String> steps, List<String> completedSteps, String inProgress) {
@@ -1530,7 +1605,9 @@ public class ChatBotEndpoint {
         if (candidate.contains("monitor-start-completion") || candidate.contains("initiate-start-servers")) {
             return "start servers";
         }
-        if (candidate.contains("monitor-patch-completion") || candidate.contains("apply-latest-patches")) {
+        if (candidate.contains("monitor-patch-completion")
+                || candidate.contains("apply-latest-patches")
+                || candidate.contains("rollback-latest-patches")) {
             return "apply patches";
         }
         if (candidate.contains("stop") && candidate.contains("server")) {
@@ -1652,7 +1729,18 @@ public class ChatBotEndpoint {
 
     private static boolean looksLikeWorkflowProposalRequest(String normalizedQuestion) {
         return normalizedQuestion.contains("patch")
-                && (normalizedQuestion.contains("apply") || normalizedQuestion.contains("recommended"));
+                && (normalizedQuestion.contains("apply")
+                || normalizedQuestion.contains("recommended")
+                || normalizedQuestion.contains("rollback")
+                || normalizedQuestion.contains("roll back")
+                || normalizedQuestion.contains("revert"));
+    }
+
+    private static boolean isRollbackWorkflowProposalRequest(String normalizedQuestion) {
+        return normalizedQuestion != null
+                && (normalizedQuestion.contains("rollback")
+                || normalizedQuestion.contains("roll back")
+                || normalizedQuestion.contains("revert"));
     }
 
     private static boolean looksLikeWorkflowApprovalRequest(String normalizedQuestion) {
