@@ -628,7 +628,7 @@ The following examples are illustrative and aligned to Helidon/LangChain4j usage
 ### 13.1 Workflow state keys
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 public final class PatchingWorkflowStateKeys {
     public static final String PROPOSAL_KEY = "proposal";
@@ -648,14 +648,14 @@ public final class PatchingWorkflowStateKeys {
 ### 13.2 HumanApprovalAgent with `@HumanInTheLoop`
 
 ```java
-package com.example.wls.agentic.ai;
+package com.oracle.wls.agentic.ai;
 
 import dev.langchain4j.agentic.Agent;
 import dev.langchain4j.agentic.declarative.HumanInTheLoop;
 import dev.langchain4j.service.MemoryId;
 import dev.langchain4j.service.V;
 import io.helidon.extensions.langchain4j.Ai;
-import com.example.wls.agentic.workflow.WorkflowApprovalSemaphore;
+import com.oracle.wls.agentic.workflow.WorkflowApprovalSemaphore;
 
 @Ai.Agent("human-approval-agent")
 public interface HumanApprovalAgent {
@@ -674,7 +674,7 @@ public interface HumanApprovalAgent {
 ### 13.3 WorkflowApprovalSemaphore
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -713,7 +713,7 @@ public final class WorkflowApprovalSemaphore {
 ### 13.4 PatchingWorkflowOutcomeRouterAgent
 
 ```java
-package com.example.wls.agentic.ai;
+package com.oracle.wls.agentic.ai;
 
 import io.helidon.extensions.langchain4j.Ai;
 import dev.langchain4j.agentic.declarative.Output;
@@ -733,7 +733,7 @@ public interface PatchingWorkflowOutcomeRouterAgent {
 ### 13.5 PatchingWorkflowAgent
 
 ```java
-package com.example.wls.agentic.ai;
+package com.oracle.wls.agentic.ai;
 
 import dev.langchain4j.agentic.declarative.SequenceAgent;
 import dev.langchain4j.service.MemoryId;

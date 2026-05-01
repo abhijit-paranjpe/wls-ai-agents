@@ -11,7 +11,7 @@ Keep it short, stable, and focused on facts that reduce repeated rediscovery.
 - **Artifact**: `com.example.wls:wls-agents:1.0.0-SNAPSHOT`
 - **Language**: Java 21
 - **Build tool**: Maven
-- **Main class**: `com.example.wls.agentic.Server`
+- **Main class**: `com.oracle.wls.agentic.Server`
 
 ## Primary Stack
 
@@ -56,13 +56,13 @@ Configured MCP client: `wls-tools-mcp-server`
 
 ## Important Packages
 
-- `com.example.wls.agentic.ai`
+- `com.oracle.wls.agentic.ai`
   - orchestration, routing, classifier, summarizer, specialist agents
-- `com.example.wls.agentic.rest`
+- `com.oracle.wls.agentic.rest`
   - HTTP entrypoint for `/chat`
-- `com.example.wls.agentic.memory`
+- `com.oracle.wls.agentic.memory`
   - conversation memory abstractions and implementations
-- `com.example.wls.agentic.dto`
+- `com.oracle.wls.agentic.dto`
   - transport objects and task context state
 
 ## Request and Memory Model

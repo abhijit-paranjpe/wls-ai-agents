@@ -14,7 +14,7 @@ It is aligned to your diagram and uses:
 
 ## Package layout
 
-- `com.example.wls.agentic.ai`
+- `com.oracle.wls.agentic.ai`
   - `WebLogicAgent`
   - `RequestClassifierAgent`
   - `RequestRouterAgent`
@@ -24,9 +24,9 @@ It is aligned to your diagram and uses:
   - `DiagnosticAgent`
   - `SummarizerAgent`
   - `RequestIntent`
-- `com.example.wls.agentic.dto`
+- `com.oracle.wls.agentic.dto`
   - `AgentResponse`
-- `com.example.wls.agentic.rest`
+- `com.oracle.wls.agentic.rest`
   - `ChatBotEndpoint`
 
 ## Configuration
