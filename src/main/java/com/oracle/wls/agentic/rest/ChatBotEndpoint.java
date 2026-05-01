@@ -85,9 +85,12 @@ public class ChatBotEndpoint {
 
     private static final Pattern HOSTS_MENTION_PATTERN = Pattern.compile(
             "(?i)\\bhosts?\\s+([A-Za-z0-9._-]+(?:\\s*,\\s*[A-Za-z0-9._-]+)*)");
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)\\bhttps?://[^\\s)>\"]+");
 
     private static final Pattern PID_PATTERN = Pattern.compile("(?i)\\bpid\\s*[:=]?\\s*(\\d+)\\b");
     private static final Pattern HOST_PATTERN = Pattern.compile("(?i)\\bhost\\s*[:=]?\\s*([A-Za-z0-9._-]+)\\b");
+    private static final Pattern TRACK_PID_ON_HOST_PATTERN = Pattern.compile(
+            "(?i)\\btrack(?:\\s+async(?:\\s+job)?\\s+status)?(?:\\s+for)?\\s+(\\d+)\\s+on\\s+(?:host\\s+)?([A-Za-z0-9._-]+)\\b");
     private final WebLogicAgent agent;
     private final ConversationMemoryService conversationMemoryService;
     private final ManagedDomainCacheService managedDomainCacheService;
@@ -220,11 +223,15 @@ public class ChatBotEndpoint {
                     question,
                     responseMessage,
                     managedDomains);
+            ResponseMetadata finalMetadata = maybeAddDiagnosticReportReviewAction(
+                    response.metadata(),
+                    question,
+                    responseMessage);
             AgentResponse finalResponse = new AgentResponse(
                     responseMessage,
                     response.summary(),
                     finalResponseContext,
-                    response.metadata());
+                    finalMetadata);
             appendConversationTurn(memoryKey, question, finalResponse.message());
             savePersistedSummary(finalResponse.taskContext(), finalResponse.summary());
             savePersistedTaskContext(finalResponse.taskContext());
@@ -1007,7 +1014,17 @@ public class ChatBotEndpoint {
         }
 
         String pid = detectPid(question);
-        String host = firstNonBlank(detectHost(question), context == null ? null : context.targetHosts());
+        String host = detectHost(question);
+
+        if (isBlank(pid) || isBlank(host)) {
+            AsyncTrackingTarget extracted = detectAsyncTrackingTarget(question);
+            if (extracted != null) {
+                pid = firstNonBlank(pid, extracted.pid());
+                host = firstNonBlank(host, extracted.host());
+            }
+        }
+
+        host = firstNonBlank(host, context == null ? null : context.targetHosts());
 
         if (isBlank(pid) || isBlank(host)) {
             String missing = isBlank(pid) && isBlank(host)
@@ -1064,13 +1081,7 @@ public class ChatBotEndpoint {
 
 
     private static boolean isTerminalAsyncTrackingStatus(String trackingResult) {
-        if (isBlank(trackingResult)) {
-            return false;
-        }
-        String lower = trackingResult.toLowerCase();
-        return lower.contains(": completed")
-                || lower.contains(": failed")
-                || lower.contains(": not found");
+        return ChatResponseAssembler.isTerminalAsyncTrackingResult(trackingResult);
     }
 
 
@@ -1079,8 +1090,12 @@ public class ChatBotEndpoint {
             return false;
         }
         String q = question.toLowerCase();
-        return (q.contains("track") || q.contains("status") || q.contains("check"))
+        boolean hasClassicTrackingSignals = (q.contains("track") || q.contains("status") || q.contains("check"))
                 && (q.contains("async") || q.contains("job") || q.contains("pid"));
+        if (hasClassicTrackingSignals) {
+            return true;
+        }
+        return TRACK_PID_ON_HOST_PATTERN.matcher(question).find();
     }
 
     private static String detectPid(String question) {
@@ -1097,6 +1112,20 @@ public class ChatBotEndpoint {
         }
         Matcher matcher = HOST_PATTERN.matcher(question);
         return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private static AsyncTrackingTarget detectAsyncTrackingTarget(String question) {
+        if (question == null || question.isBlank()) {
+            return null;
+        }
+        Matcher matcher = TRACK_PID_ON_HOST_PATTERN.matcher(question);
+        if (!matcher.find()) {
+            return null;
+        }
+        return new AsyncTrackingTarget(matcher.group(1), matcher.group(2));
+    }
+
+    private record AsyncTrackingTarget(String pid, String host) {
     }
 
     private AgentResponse maybeHandleWorkflowChatOperation(String question,
@@ -1978,5 +2007,61 @@ public class ChatBotEndpoint {
                 .filter(action -> action != null && !isBlank(action.prompt()))
                 .toList();
         return safeActions.isEmpty() ? null : new ResponseMetadata(safeActions);
+    }
+
+    private static ResponseMetadata maybeAddDiagnosticReportReviewAction(ResponseMetadata existing,
+                                                                         String question,
+                                                                         String responseMessage) {
+        if (!looksLikeDiagnosticReportRequest(question)) {
+            return existing;
+        }
+
+        String reportUrl = extractFirstUrl(responseMessage);
+        if (isBlank(reportUrl)) {
+            return existing;
+        }
+
+        ResponseAction reviewAction = new ResponseAction(
+                "diagnostic-report-detailed-analysis",
+                "Show detailed diagnostic analysis",
+                "Show detailed diagnostic analysis for report: " + reportUrl,
+                null);
+
+        List<ResponseAction> mergedActions = new java.util.ArrayList<>();
+        if (existing != null && existing.actions() != null) {
+            mergedActions.addAll(existing.actions());
+        }
+        boolean alreadyPresent = mergedActions.stream()
+                .anyMatch(action -> action != null
+                        && !isBlank(action.prompt())
+                        && action.prompt().equalsIgnoreCase(reviewAction.prompt()));
+        if (!alreadyPresent) {
+            mergedActions.add(reviewAction);
+        }
+
+        return metadataWithActions(mergedActions);
+    }
+
+    private static boolean looksLikeDiagnosticReportRequest(String question) {
+        if (question == null) {
+            return false;
+        }
+        String q = question.toLowerCase();
+        return q.contains("rda report") || q.contains("diagnostic report");
+    }
+
+    private static String extractFirstUrl(String text) {
+        if (isBlank(text)) {
+            return null;
+        }
+        Matcher matcher = URL_PATTERN.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        String url = matcher.group();
+        if (url == null) {
+            return null;
+        }
+        return url.replaceAll("[.,;!?]+$", "");
     }
 }

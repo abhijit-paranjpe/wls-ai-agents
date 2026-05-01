@@ -648,6 +648,158 @@ class ChatBotEndpointWorkflowChatTest {
     }
 
     @Test
+    void nonWorkflowAsyncTrackingAcceptsUnlabeledForOnPhrase() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        DomainRuntimeAgent runtimeAgent = mock(DomainRuntimeAgent.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 514591 on host wlsoci12-wls-0")))
+                .thenReturn("Async job is still running on host wlsoci12-wls-0 with PID 514591.");
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                runtimeAgent,
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Track async job status for 514591 on wlsoci12-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Async job is still running"));
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void nonWorkflowAsyncTrackingAcceptsTrackPidOnHostPhrase() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        DomainRuntimeAgent runtimeAgent = mock(DomainRuntimeAgent.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 514591 on host wlsoci12-wls-0")))
+                .thenReturn("Async job is still running on host wlsoci12-wls-0 with PID 514591.");
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                runtimeAgent,
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Track 514591 on host wlsoci12-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Async job is still running"));
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void nonWorkflowAsyncTrackingAcceptsTrackPidOnHostWithoutHostKeyword() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        DomainRuntimeAgent runtimeAgent = mock(DomainRuntimeAgent.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 514591 on host wlsoci12-wls-0")))
+                .thenReturn("Async job is still running on host wlsoci12-wls-0 with PID 514591.");
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                runtimeAgent,
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Track 514591 on wlsoci12-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Async job is still running"));
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void nonWorkflowAsyncTrackingCompletedJsonSuppressesFollowUpActionAndNormalizesMessage() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        DomainRuntimeAgent runtimeAgent = mock(DomainRuntimeAgent.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c"));
+        when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 1736784 on host wlsucm14c-wls-0")))
+                .thenReturn("""
+                        { "status": "completed", "operation": "start-servers", "domain": "wlsucm14c",
+                          "hostPids": {"wlsucm14c-wls-0": "1736784"}, "message": "Async job completed successfully" }
+                        """);
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                runtimeAgent,
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Track 1736784 on wlsucm14c-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertEquals(
+                "Async job status on host wlsucm14c-wls-0 for PID 1736784: completed.",
+                response.message());
+        assertTrue(response.metadata() == null
+                || response.metadata().actions() == null
+                || response.metadata().actions().isEmpty());
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
     void approveWorkflowResponseContainsStatusActionMetadataWithoutDuplicateStatusLine() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
@@ -1035,6 +1187,53 @@ class ChatBotEndpointWorkflowChatTest {
         assertEquals(
                 "Domain name is required to start all servers. Please provide the domain name.",
                 response.message());
+    }
+
+    @Test
+    void diagnosticReportResponseAddsDetailedAnalysisClickableAction() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain"));
+        when(webLogicAgent.chat(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AgentResponse(
+                        "RDA report generated and available at https://example.com/reports/rda-1736784.zip",
+                        "",
+                        null,
+                        null));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "get diagnostic report for 1736784 on wlsucm14c-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertNotNull(response.metadata());
+        assertNotNull(response.metadata().actions());
+        assertTrue(response.metadata().actions().stream().anyMatch(a ->
+                "Show detailed diagnostic analysis for report: https://example.com/reports/rda-1736784.zip"
+                        .equals(a.prompt())));
     }
 
     private static ConversationMemoryService mockMemoryService() {

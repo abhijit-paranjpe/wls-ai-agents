@@ -26,6 +26,11 @@ final class ChatResponseAssembler {
             return rawResult;
         }
 
+        String normalizedFromJson = normalizeAsyncTrackingJsonResult(text, pid, host);
+        if (!isBlank(normalizedFromJson)) {
+            return normalizedFromJson;
+        }
+
         String safePid = sanitizePid(pid);
         String safeHost = sanitizeHost(host);
 
@@ -63,6 +68,97 @@ final class ChatResponseAssembler {
         }
         normalized.append('.');
         return normalized.toString();
+    }
+
+    static boolean isTerminalAsyncTrackingResult(String rawOrNormalizedResult) {
+        if (isBlank(rawOrNormalizedResult)) {
+            return false;
+        }
+
+        String trimmed = rawOrNormalizedResult.trim();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+            try (JsonReader reader = jakarta.json.Json.createReader(new StringReader(trimmed))) {
+                JsonObject object = reader.readObject();
+                String status = getString(object, "status");
+                if (!isBlank(status)) {
+                    String s = status.trim().toLowerCase();
+                    return s.equals("completed") || s.equals("failed") || s.equals("not found");
+                }
+            } catch (RuntimeException ignored) {
+                // fall through to textual checks
+            }
+        }
+
+        String lower = trimmed.toLowerCase();
+        return lower.contains(": completed")
+                || lower.contains(": failed")
+                || lower.contains(": not found")
+                || lower.contains(" status completed")
+                || lower.contains(" status failed")
+                || lower.contains(" status not found");
+    }
+
+    private static String normalizeAsyncTrackingJsonResult(String text, String pid, String host) {
+        String trimmed = text.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return null;
+        }
+
+        try (JsonReader reader = jakarta.json.Json.createReader(new StringReader(trimmed))) {
+            JsonObject object = reader.readObject();
+            String status = getString(object, "status");
+            String jsonHost = getString(object, "host");
+            String jsonPid = getString(object, "pid");
+            String message = getString(object, "message");
+            String type = getString(object, "type");
+
+            if (isBlank(jsonHost) || isBlank(jsonPid)) {
+                JsonObject hostPids = object.getJsonObject("hostPids");
+                if (hostPids != null && !hostPids.isEmpty()) {
+                    for (String key : hostPids.keySet()) {
+                        if (isBlank(key) || hostPids.isNull(key)) {
+                            continue;
+                        }
+                        String value = hostPids.getString(key, "");
+                        if (isBlank(value)) {
+                            continue;
+                        }
+                        if (isBlank(jsonHost)) {
+                            jsonHost = key;
+                        }
+                        if (isBlank(jsonPid)) {
+                            jsonPid = value;
+                        }
+                        break;
+                    }
+                }
+            }
+
+            if (isBlank(jsonHost)) {
+                jsonHost = extractHostFromMessage(message);
+            }
+            if (isBlank(jsonPid)) {
+                jsonPid = extractPidFromMessage(message);
+            }
+
+            String safeHost = sanitizeHost(firstNonBlank(jsonHost, host));
+            String safePid = sanitizePid(firstNonBlank(jsonPid, pid));
+            String safeStatus = isBlank(status) ? "running" : status.trim().toLowerCase();
+
+            StringBuilder normalized = new StringBuilder("Async job status on host ")
+                    .append(safeHost)
+                    .append(" for PID ")
+                    .append(safePid)
+                    .append(": ")
+                    .append(safeStatus);
+            if (!isBlank(type)) {
+                normalized.append(" (type: ").append(type).append(")");
+            }
+            normalized.append('.');
+            return normalized.toString();
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     static String normalizeNonWorkflowOperationMessage(String rawMessage) {

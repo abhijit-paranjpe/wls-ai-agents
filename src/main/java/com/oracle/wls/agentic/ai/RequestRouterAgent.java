@@ -129,8 +129,6 @@ public interface RequestRouterAgent {
                 || q.contains("track job")
                 || q.contains("track async")
                 || q.contains("background job")
-                || q.contains(" pid ")
-                || q.endsWith(" pid")
                 || q.contains("async job");
     }
 
