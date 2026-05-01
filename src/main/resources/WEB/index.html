@@ -68,7 +68,7 @@
         #input-container {
             margin: 0;
             border: 1px solid var(--border-soft);
-            border-radius: 999px;
+            border-radius: 1rem;
             background: var(--panel-2);
             padding: .4rem;
             box-shadow: 0 15px 35px rgba(0,0,0,.4);
@@ -103,6 +103,11 @@
             background: transparent;
             color: #1f2a44;
             padding-left: .9rem;
+            min-height: 2.5rem;
+            max-height: 9rem;
+            resize: vertical;
+            line-height: 1.35;
+            overflow-y: auto;
         }
         #user-input.input::placeholder { color: #8a98bc; }
         #user-input.input:focus { box-shadow: none; }
@@ -180,7 +185,7 @@
     <div id="suggestions" aria-label="Suggested prompts"></div>
     <div id="input-container" class="field has-addons">
         <div class="control is-expanded">
-            <input id="user-input" class="input" type="text" placeholder="Type your message..." />
+            <textarea id="user-input" class="input" placeholder="Type your message..." rows="1"></textarea>
         </div>
         <div class="control">
             <button id="send-button" class="button is-primary">Send</button>
@@ -529,7 +534,12 @@
     }
 
     sendButton.addEventListener('click', sendMessage);
-    userInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
+    userInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
 
     appendMessage(initialWelcomeMessage, 'assistant');
     renderSuggestions();

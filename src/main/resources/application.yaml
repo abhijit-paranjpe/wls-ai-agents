@@ -19,7 +19,7 @@ agent-features:
   patching:
     enabled: true
   diagnostic:
-    enabled: false
+    enabled: true
   app-management:
     enabled: true
 
@@ -53,19 +53,15 @@ langchain4j:
       base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
       compartment-id: "ocid1.compartment.oc1..aaaaaaaalb6or3fft6ch4qx6epz2se2wbghc5f2odxchp7x6qvy6umvx2taq"
       region: "us-ashburn-1"
-      model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyag3w2xk76vlahjujj2gdfeuzhflt25gbo3bxidlsqfjla
-      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaayp5ccahfbpht56x7meyc26gyvojowmrbrr4xj626enq
-      #xai.grok-4-1-fast-reasoning
-      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaocp3cooe7jkje7irb7dsrspgobjtkxakutz76gjo3k3a
-      #xxxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyargceyuaysrjzo2metq2rinavayxqmpu7tkm6mmfojcvq
-      #xxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyaw23hfc7mtvv5wef3gwvvaguyzqmhb5lx4r5s3y2xzc4a
-      #xxmodel-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyah6tjdejjashngznsylutuhhvufukzb2g2ls54g2flsfq
+       #xai.grok-3-fast
+      #model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyag3w2xk76vlahjujj2gdfeuzhflt25gbo3bxidlsqfjla
+      #xai.grok-4-fast-non-reasoning 
+      model-name: ocid1.generativeaimodel.oc1.iad.amaaaaaask7dceyamqkpviarwzvo3wwuhnhqloa224fneaukac5megifuaba
     open-ai:
-        # Using OpenAI provider to call OCI GenAI model over OpenAI compatible API
-        api-key: /Users/aparanja/.oci/oci_api_key.pem
-        base-url: https://inference.generativeai.us-ashburn-1.oci.oraclecloud.com
-        log-requests: false
-        log-responses: false
+      base-url: https://inference.generativeai.us-chicago-1.oci.oraclecloud.com/20231130/actions
+      model-name: openai.gpt-oss-120b
+      timeout: PT90S
+      max-retries: 5
 
   models:
     wls-shared-model:
@@ -73,12 +69,12 @@ langchain4j:
 
   mcp-clients:
     wls-tools-mcp-server:
-      uri: http://150.136.60.226:9001/wlsmcp
+      uri: http://129.80.184.247:9001/wlsmcp
       
 
 
-#helidon.oci:
-#  authentication-method: "config"
+# helidon.oci:
+#  authentication-method: "auto"
 #  authentication:
 #    config:
 #      region: us-ashburn-1
