@@ -1,0 +1,10 @@
+package com.oracle.wls.agentic.ai;
+
+public enum RequestIntent {
+    DOMAIN_CONFIGURATION,
+    DOMAIN_RUNTIME,
+    PATCHING,
+    APP_MANAGEMENT,
+    DIAGNOSTIC_TROUBLESHOOTING,
+    GENERAL_ASSISTANCE
+}

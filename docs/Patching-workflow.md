@@ -711,7 +711,7 @@ The samples below use Helidon JSON binding (`@Json.Entity`), LangChain4j annotat
 ## 16.1 Workflow state enum
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 public enum WorkflowState {
     DRAFT,
@@ -736,7 +736,7 @@ public enum WorkflowState {
 ## 16.2 Workflow aggregate (Helidon JSON)
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import io.helidon.json.binding.Json;
 
@@ -771,7 +771,7 @@ public record PatchingWorkflow(
 ## 16.3 Step result model (Helidon JSON)
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import io.helidon.json.binding.Json;
 
@@ -795,7 +795,7 @@ public record WorkflowStepResult(
 ## 16.4 Workflow state store interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.List;
 import java.util.Optional;
@@ -817,7 +817,7 @@ public interface WorkflowStateStore {
 ## 16.5 Domain lock manager interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 public interface DomainLockManager {
 
@@ -834,7 +834,7 @@ public interface DomainLockManager {
 ## 16.6 Approval action enum
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 public enum ApprovalAction {
     APPROVE,
@@ -846,9 +846,9 @@ public enum ApprovalAction {
 ```
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
-import com.example.wls.agentic.dto.TaskContext;
+import com.oracle.wls.agentic.dto.TaskContext;
 import io.helidon.json.binding.Json;
 
 @Json.Entity
@@ -863,7 +863,7 @@ public record ApprovalDecision(
 ## 16.7 HumanApprovalAgent (LangChain4j)
 
 ```java
-package com.example.wls.agentic.ai;
+package com.oracle.wls.agentic.ai;
 
 import io.helidon.integrations.langchain4j.Ai;
 import dev.langchain4j.service.UserMessage;
@@ -890,9 +890,9 @@ public interface HumanApprovalAgent {
 ## 16.8 ApprovalValidator interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
-import com.example.wls.agentic.dto.TaskContext;
+import com.oracle.wls.agentic.dto.TaskContext;
 
 public interface ApprovalValidator {
 
@@ -903,7 +903,7 @@ public interface ApprovalValidator {
 ## 16.7 Execution service interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 public interface PatchingExecutionService {
 
@@ -922,7 +922,7 @@ public interface PatchingExecutionService {
 ## 16.8 Async executor interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.concurrent.CompletionStage;
 
@@ -935,7 +935,7 @@ public interface WorkflowExecutor {
 ## 16.9 Workflow coordinator interface
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.Optional;
 
@@ -962,7 +962,7 @@ public interface PatchingWorkflowCoordinator {
 ## 16.10 Workflow supervisor agent (LangChain4j)
 
 ```java
-package com.example.wls.agentic.ai;
+package com.oracle.wls.agentic.ai;
 
 import io.helidon.integrations.langchain4j.Ai;
 import dev.langchain4j.agentic.SequenceAgent;
@@ -988,7 +988,7 @@ public interface WorkflowSupervisorAgent {
 ## 16.11 Example in-memory lock manager (Helidon-aligned)
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -1022,7 +1022,7 @@ public class InMemoryDomainLockManager implements DomainLockManager {
 ## 16.12 Example async executor (with sync option)
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CompletableFuture;
@@ -1055,9 +1055,9 @@ public class AsyncWorkflowExecutor implements WorkflowExecutor {
 ## 16.13 Example coordinator implementation sketch (LangChain4j integration)
 
 ```java
-package com.example.wls.agentic.workflow;
+package com.oracle.wls.agentic.workflow;
 
-import com.example.wls.agentic.ai.WorkflowSupervisorAgent;
+import com.oracle.wls.agentic.ai.WorkflowSupervisorAgent;
 import io.helidon.common.features.HelidonFlavor;
 
 @HelidonFlavor("SE")

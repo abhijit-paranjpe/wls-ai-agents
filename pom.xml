@@ -17,7 +17,7 @@
     <name>WebLogic Agentic Assistant</name>
 
     <properties>
-        <mainClass>com.example.wls.agentic.Server</mainClass>
+        <mainClass>com.oracle.wls.agentic.Server</mainClass>
     </properties>
 
     <dependencies>
