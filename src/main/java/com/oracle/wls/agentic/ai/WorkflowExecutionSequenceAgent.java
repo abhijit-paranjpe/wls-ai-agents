@@ -1,5 +1,6 @@
 package com.oracle.wls.agentic.ai;
 
+import com.oracle.wls.agentic.workflow.WorkflowResponseContract;
 import com.oracle.wls.agentic.workflow.WorkflowStateMutationService;
 import io.helidon.service.registry.Service;
 
@@ -14,7 +15,6 @@ import java.util.regex.Pattern;
 public class WorkflowExecutionSequenceAgent {
 
     private static final Logger LOGGER = Logger.getLogger(WorkflowExecutionSequenceAgent.class.getName());
-    private static final Pattern JSON_STATUS_PATTERN = Pattern.compile("\\\"status\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"", Pattern.CASE_INSENSITIVE);
     private static final Pattern JSON_MESSAGE_PATTERN = Pattern.compile("\\\"message\\\"\\s*:\\s*\\\"([^\\\"]*)\\\"", Pattern.CASE_INSENSITIVE);
     private static final int MAX_MONITOR_POLL_ATTEMPTS = 120;
     private static final long MONITOR_POLL_SLEEP_MILLIS = 120_000L;
@@ -84,17 +84,24 @@ public class WorkflowExecutionSequenceAgent {
                                String asyncOriginStepToCompleteOnSuccess) {
         String composedQuestion = """
                 %s
-
-                Workflow instruction: %s
-                targetDomain: %s
-                lastResponse: %s
-                """.formatted(stepQuestion, safe(instruction), safe(targetDomain), safe(lastResponse));
+                """.formatted(WorkflowResponseContract.composePromptWithWorkflowContext(
+                stepQuestion,
+                instruction,
+                targetDomain,
+                lastResponse));
 
         LOGGER.info(() -> "[workflow=" + workflowId + "] Step " + stepNumber + " (" + stepName + ") START");
         LOGGER.fine(() -> "[workflow=" + workflowId + "] Step " + stepNumber + " question=" + composedQuestion);
         workflowStateMutationService.markStepInExecution(workflowId, stepName, "Step started");
 
-        String response = caller.call(composedQuestion);
+        String response;
+        if (isMonitorStep(stepName) && !WorkflowResponseContract.hasTrackingContext(lastResponse)) {
+            response = WorkflowResponseContract.trackingContextMissingFailureResponse(targetDomain, stepName);
+            LOGGER.warning(() -> "[workflow=" + workflowId + "] Step " + stepNumber + " (" + stepName
+                    + ") missing tracking context in lastResponse. Failing fast before monitor call.");
+        } else {
+            response = caller.call(composedQuestion);
+        }
 
         if (isMonitorStep(stepName)) {
             response = pollMonitorUntilTerminal(workflowId,
@@ -148,11 +155,11 @@ public class WorkflowExecutionSequenceAgent {
 
             String nextQuestion = """
                     %s
-
-                    Workflow instruction: %s
-                    targetDomain: %s
-                    lastResponse: %s
-                    """.formatted(stepQuestion, safe(instruction), safe(targetDomain), safe(response));
+                    """.formatted(WorkflowResponseContract.composePromptWithWorkflowContext(
+                    stepQuestion,
+                    instruction,
+                    targetDomain,
+                    response));
 
             response = caller.call(nextQuestion);
             attempts++;
@@ -169,36 +176,15 @@ public class WorkflowExecutionSequenceAgent {
     }
 
     private static boolean isRunning(String response) {
-        return "running".equalsIgnoreCase(extractStatus(response));
+        return "running".equalsIgnoreCase(WorkflowResponseContract.extractStatus(response));
     }
 
     private static boolean isFailure(String response) {
-        String status = extractStatus(response);
+        String status = WorkflowResponseContract.extractStatus(response);
         if (status == null || status.isBlank()) {
             return response == null || response.isBlank();
         }
         return "failed".equalsIgnoreCase(status);
-    }
-
-    private static String extractStatus(String response) {
-        if (response == null || response.isBlank()) {
-            return null;
-        }
-        Matcher matcher = JSON_STATUS_PATTERN.matcher(response);
-        if (matcher.find()) {
-            return matcher.group(1).trim().toLowerCase(Locale.ROOT);
-        }
-        String normalized = response.toLowerCase(Locale.ROOT);
-        if (normalized.contains("status=failed")) {
-            return "failed";
-        }
-        if (normalized.contains("status=running")) {
-            return "running";
-        }
-        if (normalized.contains("status=completed")) {
-            return "completed";
-        }
-        return null;
     }
 
     private static String extractMessage(String response) {

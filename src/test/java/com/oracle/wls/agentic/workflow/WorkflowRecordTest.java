@@ -25,7 +25,10 @@ class WorkflowRecordTest {
                 null,
                 null,
                 null,
-                List.of());
+                List.of(),
+                "RDA report indicates stale JDBC pool settings",
+                "https://example/reports/rda.zip",
+                "Detailed analysis");
 
         WorkflowSummary summary = record.toSummary();
 
@@ -37,5 +40,6 @@ class WorkflowRecordTest {
         assertEquals("conv-1", summary.conversationId());
         assertEquals("task-1", summary.taskId());
         assertEquals("Patch WebLogic PSU Jan 2026", summary.requestSummary());
+        assertEquals("RDA report indicates stale JDBC pool settings", summary.workflowSummary());
     }
 }

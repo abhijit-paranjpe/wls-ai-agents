@@ -125,7 +125,10 @@ class PatchingWorkflowCoordinatorTest {
                 created.approvalDecisionAt(),
                 created.approvalChannel(),
                 created.failureReason(),
-                created.steps());
+                created.steps(),
+                created.workflowSummary(),
+                created.reportUrl(),
+                created.reportAnalysis());
         store.update(approved);
 
         List<WorkflowSummary> inExecution = coordinator.listInExecution();
@@ -181,7 +184,10 @@ class PatchingWorkflowCoordinatorTest {
                                 new WorkflowStepRecord("stop servers", "stop servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(60), now.minusSeconds(50), "ok"),
                                 new WorkflowStepRecord("apply patches", "apply patches", WorkflowStepStatus.COMPLETED, now.minusSeconds(49), now.minusSeconds(30), "ok"),
                                 new WorkflowStepRecord("start servers", "start servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(29), now.minusSeconds(15), "ok"),
-                                new WorkflowStepRecord("verify patch level", "verify patch level", WorkflowStepStatus.COMPLETED, now.minusSeconds(14), now.minusSeconds(1), "ok"))));
+                                new WorkflowStepRecord("verify patch level", "verify patch level", WorkflowStepStatus.COMPLETED, now.minusSeconds(14), now.minusSeconds(1), "ok")),
+                        current.workflowSummary(),
+                        current.reportUrl(),
+                        current.reportAnalysis()));
                 return "ok";
             }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
 
@@ -250,7 +256,10 @@ class PatchingWorkflowCoordinatorTest {
                                 WorkflowStepStatus.COMPLETED,
                                 now.minusSeconds(20),
                                 now.minusSeconds(10),
-                                "ok"))));
+                                "ok")),
+                        current.workflowSummary(),
+                        current.reportUrl(),
+                        current.reportAnalysis()));
                 return "partial";
             }).when(sequenceAgent).run(anyString(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any());
 

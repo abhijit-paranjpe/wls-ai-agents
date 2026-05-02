@@ -14,6 +14,7 @@ import com.oracle.wls.agentic.workflow.WorkflowRecord;
 import com.oracle.wls.agentic.workflow.WorkflowApprovalSemaphore;
 import com.oracle.wls.agentic.workflow.WorkflowStepRecord;
 import com.oracle.wls.agentic.workflow.WorkflowStatus;
+import com.oracle.wls.agentic.workflow.DiagnosticWorkflowCoordinator;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.memory.ChatMemory;
 import org.junit.jupiter.api.Test;
@@ -309,7 +310,10 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 null,
                 "Workflow step did not provide async tracking identifiers: apply patches",
-                List.of()));
+                List.of(),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -359,7 +363,10 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 null,
                 null,
-                List.of()));
+                List.of(),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -414,7 +421,10 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 List.of(
                         new WorkflowStepRecord("stop servers", "stop servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
-                        new WorkflowStepRecord("apply patches", "apply patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running"))));
+                        new WorkflowStepRecord("apply patches", "apply patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running")),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -448,6 +458,61 @@ class ChatBotEndpointWorkflowChatTest {
     }
 
     @Test
+    void statusForDiagnosticWorkflowUsesDiagnosticStepFormatter() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        Instant now = Instant.now();
+        store.create(new WorkflowRecord(
+                "18fcefb8-8e23-44ce-8359-540cb2a42f23",
+                "wlsucm14c_domain",
+                WorkflowStatus.IN_EXECUTION,
+                now,
+                now,
+                "conv-1",
+                "task-1",
+                "Create diagnostic report and summarize it for domain wlsucm14c_domain",
+                null,
+                null,
+                null,
+                null,
+                List.of(
+                        new WorkflowStepRecord("run rda diagnostic report", "run rda diagnostic report", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running")),
+                null,
+                null,
+                null));
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain"));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "status for workflow 18fcefb8-8e23-44ce-8359-540cb2a42f23",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("- ⏳ Run RDA diagnostic report"));
+        assertTrue(response.message().contains("- ⏺️ Monitor RDA async job"));
+        assertTrue(response.message().contains("- ⏺️ Analyze RDA report"));
+        assertFalse(response.message().contains("Stop servers"));
+        assertFalse(response.message().contains("Apply patches"));
+    }
+
+    @Test
     void statusForRollbackWorkflowShowsRollbackSpecificStepLabels() {
         InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
         Instant now = Instant.now();
@@ -466,7 +531,10 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 List.of(
                         new WorkflowStepRecord("initiate-stop-servers", "initiate-stop-servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
-                        new WorkflowStepRecord("rollback-latest-patches", "rollback-latest-patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running"))));
+                        new WorkflowStepRecord("rollback-latest-patches", "rollback-latest-patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running")),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -519,7 +587,10 @@ class ChatBotEndpointWorkflowChatTest {
                 null,
                 List.of(
                         new WorkflowStepRecord("initiate-stop-servers", "initiate-stop-servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
-                        new WorkflowStepRecord("apply-latest-patches", "apply-latest-patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running"))));
+                        new WorkflowStepRecord("apply-latest-patches", "apply-latest-patches", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null, "running")),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -574,7 +645,10 @@ class ChatBotEndpointWorkflowChatTest {
                 List.of(
                         new WorkflowStepRecord("initiate-stop-servers", "initiate-stop-servers", WorkflowStepStatus.COMPLETED, now.minusSeconds(120), now.minusSeconds(60), "done"),
                         new WorkflowStepRecord("monitor-patch-completion", "monitor-patch-completion", WorkflowStepStatus.IN_EXECUTION, now.minusSeconds(10), null,
-                                "{\"status\":\"running\",\"operation\":\"rollback-latest-patches\"}"))));
+                                "{\"status\":\"running\",\"operation\":\"rollback-latest-patches\"}")),
+                null,
+                null,
+                null));
         PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
 
         WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
@@ -744,6 +818,42 @@ class ChatBotEndpointWorkflowChatTest {
         AgentResponse response = endpoint.chatWithAssistant("""
                 {
                   "message": "Track 514591 on wlsoci12-wls-0",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Async job is still running"));
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void nonWorkflowAsyncTrackingAcceptsTrackStatusPidOnHostPhrase() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        DomainRuntimeAgent runtimeAgent = mock(DomainRuntimeAgent.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        when(runtimeAgent.analyzeRequest(contains("Track async job status for PID 6923 on host wlsoci12-wls-0")))
+                .thenReturn("Async job is still running on host wlsoci12-wls-0 with PID 6923.");
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                runtimeAgent,
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Track the status pid 6923 on wlsoci12-wls-0",
                   "taskContext": {
                     "conversationId": "conv-1",
                     "taskId": "task-1"
@@ -1234,6 +1344,405 @@ class ChatBotEndpointWorkflowChatTest {
         assertTrue(response.metadata().actions().stream().anyMatch(a ->
                 "Show detailed diagnostic analysis for report: https://example.com/reports/rda-1736784.zip"
                         .equals(a.prompt())));
+    }
+
+    @Test
+    void rdaWorkflowStartWithAmbiguousDomainsPromptsForSingleDomainAndDoesNotStartWorkflow() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod", "orders-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+        DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator = mock(DiagnosticWorkflowCoordinator.class);
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                diagnosticWorkflowCoordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Create diagnostic report and summarize it",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Please choose a single domain"));
+        assertTrue(response.message().contains("Available domains: payments-prod, orders-prod"));
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator, org.mockito.Mockito.never())
+                .startRdaDiagnosticWorkflow(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void pendingDiagnosticDomainSelectionFollowUpStartsRdaWorkflowInsteadOfRuntimeOperation() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain", "orders-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+        DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator = mock(DiagnosticWorkflowCoordinator.class);
+
+        Instant now = Instant.now();
+        WorkflowRecord workflowRecord = new WorkflowRecord(
+                "wf-rda-followup-1",
+                "wlsucm14c_domain",
+                WorkflowStatus.QUEUED,
+                now,
+                now,
+                "conv-1",
+                "task-1",
+                "Create diagnostic report and summarize it for domain wlsucm14c_domain",
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null);
+        when(diagnosticWorkflowCoordinator.startRdaDiagnosticWorkflow(
+                org.mockito.ArgumentMatchers.eq("wlsucm14c_domain"),
+                org.mockito.ArgumentMatchers.eq("conv-1"),
+                org.mockito.ArgumentMatchers.eq("task-1"),
+                org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(workflowRecord);
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                diagnosticWorkflowCoordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse firstTurn = endpoint.chatWithAssistant("""
+                {
+                  "message": "Create diagnostic report and summarize it",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(firstTurn.message().contains("Please choose a single domain"));
+
+        AgentResponse secondTurn = endpoint.chatWithAssistant("""
+                {
+                  "message": "Run it for wlsucm14c_domain",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1",
+                    "intent": "DIAGNOSTIC_WORKFLOW_START",
+                    "pendingIntent": "DIAGNOSTIC_WORKFLOW_START",
+                    "awaitingFollowUp": true,
+                    "lastUserRequest": "Create diagnostic report and summarize it",
+                    "lastAssistantQuestion": "Please choose a single domain to start a diagnostic workflow. Available domains: wlsucm14c_domain, orders-prod"
+                  }
+                }
+                """);
+
+        assertTrue(secondTurn.message().contains("Created diagnostic workflow 'wf-rda-followup-1'"));
+        assertNotNull(secondTurn.taskContext());
+        assertEquals("wlsucm14c_domain", secondTurn.taskContext().targetDomain());
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator)
+                .startRdaDiagnosticWorkflow(
+                        org.mockito.ArgumentMatchers.eq("wlsucm14c_domain"),
+                        org.mockito.ArgumentMatchers.eq("conv-1"),
+                        org.mockito.ArgumentMatchers.eq("task-1"),
+                        contains("Create diagnostic report and summarize it"));
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void explicitReportAnalysisByWorkflowIdReturnsStoredWorkflowAnalysisEvenWhenFollowUpIsPending() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("wlsucm14c_domain", "orders-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+        DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator = mock(DiagnosticWorkflowCoordinator.class);
+
+        String workflowId = "d911270d-95b8-4d2c-8342-14793d156b77";
+        String storedAnalysis = "RDA summary: Thread contention observed in managed server with BEA-000337 evidence.";
+        Instant now = Instant.now();
+        WorkflowRecord workflowRecord = new WorkflowRecord(
+                workflowId,
+                "wlsucm14c_domain",
+                WorkflowStatus.COMPLETED,
+                now,
+                now,
+                "conv-1",
+                "task-1",
+                "Create diagnostic report and summarize it for domain wlsucm14c_domain",
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                "RDA summary",
+                "https://example.com/rda.zip",
+                storedAnalysis);
+        when(diagnosticWorkflowCoordinator.getByWorkflowId(workflowId))
+                .thenReturn(Optional.of(workflowRecord));
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                diagnosticWorkflowCoordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Show me the analysis of the report for d911270d-95b8-4d2c-8342-14793d156b77",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1",
+                    "intent": "DIAGNOSTIC_WORKFLOW_START",
+                    "pendingIntent": "DIAGNOSTIC_WORKFLOW_START",
+                    "awaitingFollowUp": true,
+                    "lastUserRequest": "Create diagnostic report and summarize it",
+                    "lastAssistantQuestion": "Please choose a single domain to start a diagnostic workflow. Available domains: wlsucm14c_domain, orders-prod"
+                  }
+                }
+                """);
+
+        assertEquals(storedAnalysis, response.message());
+        assertNotNull(response.taskContext());
+        assertEquals(workflowId, response.taskContext().lastReferencedWorkflowId());
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator).getByWorkflowId(workflowId);
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator, org.mockito.Mockito.never())
+                .startRdaDiagnosticWorkflow(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any());
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void rdaWorkflowStartWithExplicitDomainStartsOneWorkflowForThatDomain() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod", "orders-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+        DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator = mock(DiagnosticWorkflowCoordinator.class);
+
+        Instant now = Instant.now();
+        WorkflowRecord workflowRecord = new WorkflowRecord(
+                "wf-rda-1",
+                "payments-prod",
+                WorkflowStatus.QUEUED,
+                now,
+                now,
+                "conv-1",
+                "task-1",
+                "Create diagnostic report and summarize it for domain payments-prod",
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null);
+        when(diagnosticWorkflowCoordinator.startRdaDiagnosticWorkflow(
+                org.mockito.ArgumentMatchers.eq("payments-prod"),
+                org.mockito.ArgumentMatchers.eq("conv-1"),
+                org.mockito.ArgumentMatchers.eq("task-1"),
+                org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(workflowRecord);
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                diagnosticWorkflowCoordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Create diagnostic report and summarize it for domain payments-prod",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Created diagnostic workflow 'wf-rda-1'"));
+        assertEquals("payments-prod", response.taskContext().targetDomain());
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator)
+                .startRdaDiagnosticWorkflow(
+                        org.mockito.ArgumentMatchers.eq("payments-prod"),
+                        org.mockito.ArgumentMatchers.eq("conv-1"),
+                        org.mockito.ArgumentMatchers.eq("task-1"),
+                        org.mockito.ArgumentMatchers.anyString());
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void rdaWorkflowStartWithSingleManagedDomainAndNoExplicitDomainStartsOneWorkflow() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+        DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator = mock(DiagnosticWorkflowCoordinator.class);
+
+        Instant now = Instant.now();
+        WorkflowRecord workflowRecord = new WorkflowRecord(
+                "wf-rda-2",
+                "payments-prod",
+                WorkflowStatus.QUEUED,
+                now,
+                now,
+                "conv-1",
+                "task-1",
+                "Create diagnostic report and summarize it",
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null);
+        when(diagnosticWorkflowCoordinator.startRdaDiagnosticWorkflow(
+                org.mockito.ArgumentMatchers.eq("payments-prod"),
+                org.mockito.ArgumentMatchers.eq("conv-1"),
+                org.mockito.ArgumentMatchers.eq("task-1"),
+                org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn(workflowRecord);
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                diagnosticWorkflowCoordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        AgentResponse response = endpoint.chatWithAssistant("""
+                {
+                  "message": "Create diagnostic report and summarize it",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        assertTrue(response.message().contains("Created diagnostic workflow 'wf-rda-2'"));
+        assertEquals("payments-prod", response.taskContext().targetDomain());
+        org.mockito.Mockito.verify(diagnosticWorkflowCoordinator)
+                .startRdaDiagnosticWorkflow(
+                        org.mockito.ArgumentMatchers.eq("payments-prod"),
+                        org.mockito.ArgumentMatchers.eq("conv-1"),
+                        org.mockito.ArgumentMatchers.eq("task-1"),
+                        org.mockito.ArgumentMatchers.anyString());
+        verifyNoInteractions(webLogicAgent);
+    }
+
+    @Test
+    void moreDetailsFollowUpReusesPreviousDiagnosticRequestContext() {
+        InMemoryWorkflowStateStore store = new InMemoryWorkflowStateStore();
+        PatchingWorkflowCoordinator coordinator = new PatchingWorkflowCoordinator(store);
+
+        WebLogicAgent webLogicAgent = mock(WebLogicAgent.class);
+        ManagedDomainCacheService domainCacheService = mock(ManagedDomainCacheService.class);
+        when(domainCacheService.getDomains()).thenReturn(List.of("payments-prod"));
+        ConversationMemoryService memoryService = mockMemoryService();
+
+        when(webLogicAgent.chat(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any()))
+                .thenReturn(new AgentResponse(
+                        "Concise summary. If you need a detailed report with excerpts, evidence rationale, or remediation steps, reply with \"more details\".",
+                        "",
+                        null,
+                        null))
+                .thenReturn(new AgentResponse(
+                        "Detailed summary with expanded evidence.",
+                        "",
+                        null,
+                        null));
+
+        ChatBotEndpoint endpoint = new ChatBotEndpoint(
+                webLogicAgent,
+                memoryService,
+                domainCacheService,
+                coordinator,
+                new WorkflowApprovalSemaphore(),
+                mock(DomainRuntimeAgent.class),
+                mock(PatchingAgent.class));
+
+        endpoint.chatWithAssistant("""
+                {
+                  "message": "Analyze diagnostic report for domain payments-prod",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1"
+                  }
+                }
+                """);
+
+        AgentResponse detailResponse = endpoint.chatWithAssistant("""
+                {
+                  "message": "more details",
+                  "taskContext": {
+                    "conversationId": "conv-1",
+                    "taskId": "task-1",
+                    "lastUserRequest": "Analyze diagnostic report for domain payments-prod"
+                  }
+                }
+                """);
+
+        assertTrue(detailResponse.message().contains("Detailed summary"));
+        org.mockito.Mockito.verify(webLogicAgent).chat(
+                org.mockito.ArgumentMatchers.contains("Previous user request: Analyze diagnostic report for domain payments-prod"),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     private static ConversationMemoryService mockMemoryService() {

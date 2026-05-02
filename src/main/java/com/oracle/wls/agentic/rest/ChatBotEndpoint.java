@@ -20,6 +20,7 @@ import com.oracle.wls.agentic.workflow.WorkflowRecord;
 import com.oracle.wls.agentic.workflow.WorkflowStepRecord;
 import com.oracle.wls.agentic.workflow.WorkflowStatus;
 import com.oracle.wls.agentic.workflow.WorkflowSummary;
+import com.oracle.wls.agentic.workflow.DiagnosticWorkflowCoordinator;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -66,6 +67,10 @@ public class ChatBotEndpoint {
             "no", "n", "nope", "nah");
     private static final Set<String> CANCELLATION_REPLIES = Set.of(
             "cancel", "never mind", "nevermind", "stop", "forget it");
+    private static final Set<String> DETAIL_EXPANSION_REPLIES = Set.of(
+            "more details", "details", "detailed report", "full analysis", "show evidence",
+            "explain more", "elaborate", "expand");
+    private static final String DIAGNOSTIC_WORKFLOW_START_INTENT = "DIAGNOSTIC_WORKFLOW_START";
 
     private static final Pattern DOMAIN_MENTION_PATTERN = Pattern.compile(
             "(?i)\\b(?:for|in|on|of)?\\s*domain\\s+([A-Za-z0-9._-]+)");
@@ -90,17 +95,17 @@ public class ChatBotEndpoint {
     private static final Pattern PID_PATTERN = Pattern.compile("(?i)\\bpid\\s*[:=]?\\s*(\\d+)\\b");
     private static final Pattern HOST_PATTERN = Pattern.compile("(?i)\\bhost\\s*[:=]?\\s*([A-Za-z0-9._-]+)\\b");
     private static final Pattern TRACK_PID_ON_HOST_PATTERN = Pattern.compile(
-            "(?i)\\btrack(?:\\s+async(?:\\s+job)?\\s+status)?(?:\\s+for)?\\s+(\\d+)\\s+on\\s+(?:host\\s+)?([A-Za-z0-9._-]+)\\b");
+            "(?i)\\b(?:track|check)(?:\\s+the)?(?:\\s+async(?:\\s+job)?)?(?:\\s+status)?(?:\\s+for)?(?:\\s+pid)?\\s*[:=]?\\s*(\\d+)\\s+on\\s+(?:host\\s+)?([A-Za-z0-9._-]+)\\b");
     private final WebLogicAgent agent;
     private final ConversationMemoryService conversationMemoryService;
     private final ManagedDomainCacheService managedDomainCacheService;
     private final PatchingWorkflowCoordinator workflowCoordinator;
+    private final DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator;
     private final WorkflowApprovalSemaphore approvalSemaphore;
 
     private final DomainRuntimeAgent domainRuntimeAgent;
     private final PatchingAgent patchingAgent;
 
-    @Service.Inject
     public ChatBotEndpoint(WebLogicAgent agent,
                            ConversationMemoryService conversationMemoryService,
                            ManagedDomainCacheService managedDomainCacheService,
@@ -108,10 +113,30 @@ public class ChatBotEndpoint {
                            WorkflowApprovalSemaphore approvalSemaphore,
                            DomainRuntimeAgent domainRuntimeAgent,
                            PatchingAgent patchingAgent) {
+        this(agent,
+                conversationMemoryService,
+                managedDomainCacheService,
+                workflowCoordinator,
+                null,
+                approvalSemaphore,
+                domainRuntimeAgent,
+                patchingAgent);
+    }
+
+    @Service.Inject
+    public ChatBotEndpoint(WebLogicAgent agent,
+                           ConversationMemoryService conversationMemoryService,
+                           ManagedDomainCacheService managedDomainCacheService,
+                           PatchingWorkflowCoordinator workflowCoordinator,
+                           DiagnosticWorkflowCoordinator diagnosticWorkflowCoordinator,
+                           WorkflowApprovalSemaphore approvalSemaphore,
+                           DomainRuntimeAgent domainRuntimeAgent,
+                           PatchingAgent patchingAgent) {
         this.agent = agent;
         this.conversationMemoryService = conversationMemoryService;
         this.managedDomainCacheService = managedDomainCacheService;
         this.workflowCoordinator = workflowCoordinator;
+        this.diagnosticWorkflowCoordinator = diagnosticWorkflowCoordinator;
         this.approvalSemaphore = approvalSemaphore;
         this.domainRuntimeAgent = domainRuntimeAgent;
         this.patchingAgent = patchingAgent;
@@ -194,7 +219,8 @@ public class ChatBotEndpoint {
         }
 
         String followUpAwareQuestion = maybeRewritePendingFollowUpQuestion(question, context, managedDomains);
-        String contextualizedQuestion = maybeApplyImplicitDomainContext(followUpAwareQuestion, context, managedDomains);
+        String detailAwareQuestion = maybeRewriteDetailExpansionFollowUpQuestion(followUpAwareQuestion, context);
+        String contextualizedQuestion = maybeApplyImplicitDomainContext(detailAwareQuestion, context, managedDomains);
 
         String conversationTranscript = renderTranscript(loadConversationMessages(memoryKey));
         TaskContext compactedContext = compactContext(context);
@@ -652,6 +678,28 @@ public class ChatBotEndpoint {
         return question;
     }
 
+    private static String maybeRewriteDetailExpansionFollowUpQuestion(String question, TaskContext context) {
+        if (question == null || question.isBlank() || context == null) {
+            return question;
+        }
+        if (!isDetailExpansionFollowUp(question)) {
+            return question;
+        }
+        if (isBlank(context.lastUserRequest())) {
+            return question;
+        }
+        if (normalizeReply(question).equals(normalizeReply(context.lastUserRequest()))) {
+            return question;
+        }
+
+        return """
+                The user asked for a more detailed response to their previous request.
+                Previous user request: %s
+                Follow-up message: %s
+                Provide a detailed version of the answer for the previous request, including stronger evidence and rationale.
+                """.formatted(context.lastUserRequest(), question).trim();
+    }
+
     private static TaskContext applyServerContextFromQuestion(String question, TaskContext context) {
         String detectedServers = detectMentionedTargets(question, SERVERS_MENTION_PATTERN);
         if (detectedServers == null || detectedServers.isBlank()) {
@@ -891,7 +939,12 @@ public class ChatBotEndpoint {
         return SHORT_AFFIRMATIVE_REPLIES.contains(normalized)
                 || SHORT_NEGATIVE_REPLIES.contains(normalized)
                 || CANCELLATION_REPLIES.contains(normalized)
+                || isDetailExpansionFollowUp(rawQuestion)
                 || isDomainSlotFollowUpReply(rawQuestion, managedDomains);
+    }
+
+    private static boolean isDetailExpansionFollowUp(String question) {
+        return DETAIL_EXPANSION_REPLIES.contains(normalizeReply(question));
     }
 
     private static boolean isDomainSlotFollowUpReply(String question, List<String> managedDomains) {
@@ -1136,9 +1189,32 @@ public class ChatBotEndpoint {
             return null;
         }
 
+        List<String> managedDomains = managedDomainCacheService.getDomains();
         String normalized = normalizeReply(question);
+        boolean explicitWorkflowIdMentioned = extractWorkflowId(question).isPresent();
+
+        if (isExplicitWorkflowLookupRequest(question, normalized)) {
+            if (looksLikeRdaWorkflowAnalysisRequest(normalized)
+                    || (explicitWorkflowIdMentioned && looksLikeRdaReportSummaryIntent(normalized))) {
+                return handleRdaWorkflowAnalysisRequest(question, context, summary, memoryKey);
+            }
+            if (looksLikeWorkflowStatusRequest(normalized)) {
+                return handleWorkflowStatusRequest(question, context, summary, memoryKey);
+            }
+        }
+
+        if (isPendingDiagnosticWorkflowDomainSelectionFollowUp(question, context, managedDomains)) {
+            return handlePendingDiagnosticWorkflowDomainSelectionFollowUp(question, context, summary, memoryKey, managedDomains);
+        }
+
         if (looksLikeWorkflowListRequest(normalized)) {
             return handleWorkflowListRequest(question, context, summary, memoryKey, normalized);
+        }
+        if (looksLikeRdaWorkflowAnalysisRequest(normalized)) {
+            return handleRdaWorkflowAnalysisRequest(question, context, summary, memoryKey);
+        }
+        if (looksLikeRdaWorkflowStartRequest(normalized)) {
+            return handleRdaWorkflowStartRequest(question, context, summary, memoryKey);
         }
         if (looksLikeWorkflowStatusRequest(normalized)) {
             return handleWorkflowStatusRequest(question, context, summary, memoryKey);
@@ -1150,6 +1226,52 @@ public class ChatBotEndpoint {
             return handleWorkflowProposalRequest(question, context, summary, memoryKey);
         }
         return null;
+    }
+
+    private AgentResponse handlePendingDiagnosticWorkflowDomainSelectionFollowUp(String question,
+                                                                                 TaskContext context,
+                                                                                 String summary,
+                                                                                 String memoryKey,
+                                                                                 List<String> managedDomains) {
+        String domain = detectMentionedDomain(question, managedDomains);
+        if (isBlank(domain)) {
+            return null;
+        }
+
+        String priorRequest = firstNonBlank(
+                context == null ? null : context.lastUserRequest(),
+                "Create diagnostic report and summarize it");
+        String reconstructedRequest = priorRequest + " for domain " + domain;
+        TaskContext domainContext = (context == null ? TaskContext.empty() : context)
+                .withTargetDomain(domain)
+                .withLastUserRequest(priorRequest)
+                .withIntent(firstNonBlank(context == null ? null : context.intent(), DIAGNOSTIC_WORKFLOW_START_INTENT));
+        return handleRdaWorkflowStartRequest(reconstructedRequest, domainContext, summary, memoryKey);
+    }
+
+    private static boolean isPendingDiagnosticWorkflowDomainSelectionFollowUp(String question,
+                                                                              TaskContext context,
+                                                                              List<String> managedDomains) {
+        if (question == null || question.isBlank() || context == null) {
+            return false;
+        }
+        if (!Boolean.TRUE.equals(context.awaitingFollowUp())) {
+            return false;
+        }
+        String pendingIntent = firstNonBlank(context.pendingIntent(), context.intent());
+        String lowerIntent = pendingIntent == null ? "" : pendingIntent.toLowerCase();
+        String lowerAssistantQuestion = safe(context.lastAssistantQuestion()).toLowerCase();
+        boolean diagnosticPending = lowerIntent.contains("diagnostic")
+                || lowerIntent.contains("rda")
+                || DIAGNOSTIC_WORKFLOW_START_INTENT.equalsIgnoreCase(pendingIntent)
+                || lowerAssistantQuestion.contains("choose a single domain")
+                || lowerAssistantQuestion.contains("diagnostic workflow");
+        if (!diagnosticPending) {
+            return false;
+        }
+
+        String domain = detectMentionedDomain(question, managedDomains);
+        return !isBlank(domain);
     }
 
     private AgentResponse handleWorkflowProposalRequest(String question,
@@ -1377,19 +1499,40 @@ public class ChatBotEndpoint {
         }
 
         WorkflowRecord record = workflow.orElseThrow();
+        String completedHint = buildRdaAnalysisHint(record);
         String message = "Workflow '" + record.workflowId() + "' for domain '" + record.domain()
                 + "' is in state '" + record.currentState() + "'.\n"
                 + renderStepStatusMarkdown(record)
-                + (isBlank(record.failureReason()) ? "" : "\nFailure reason: " + record.failureReason());
+                + (isBlank(record.failureReason()) ? "" : "\nFailure reason: " + record.failureReason())
+                + (isBlank(completedHint) ? "" : "\n\n" + completedHint);
+
+        ResponseMetadata statusMetadata = isBlank(completedHint)
+                ? null
+                : metadataWithActions(List.of(new ResponseAction(
+                "workflow-report-analysis",
+                "Show report analysis",
+                "Show me the analysis of the report for " + record.workflowId(),
+                record.workflowId())));
+
         TaskContext responseContext = (context == null ? TaskContext.empty() : context)
                 .withLastReferencedWorkflowId(record.workflowId())
                 .withLastUserRequest(question);
         appendConversationTurn(memoryKey, question, message);
-        return new AgentResponse(message, summary, responseContext, null);
+        return new AgentResponse(message, summary, responseContext, statusMetadata);
+    }
+
+    private static String buildRdaAnalysisHint(WorkflowRecord record) {
+        if (record == null || record.currentState() != WorkflowStatus.COMPLETED || isBlank(record.reportAnalysis())) {
+            return null;
+        }
+        return "Show me the analysis of the report for " + record.workflowId();
     }
 
     private static String renderStepProgress(WorkflowRecord record) {
-        List<String> steps = List.of("stop servers", "apply patches", "start servers", "verify patch level");
+        WorkflowStepFamily stepFamily = detectWorkflowStepFamily(record);
+        List<String> steps = stepFamily == WorkflowStepFamily.DIAGNOSTIC
+                ? List.of("run rda diagnostic report", "monitor rda async job", "analyze rda report")
+                : List.of("stop servers", "apply patches", "start servers", "verify patch level");
         List<String> completedSteps = orderedCompletedSteps(record, steps);
         int completedIndex = switch (record.currentState()) {
             case COMPLETED -> 3;
@@ -1400,7 +1543,7 @@ public class ChatBotEndpoint {
 
         String inProgress = null;
         if (record.currentState() == WorkflowStatus.IN_EXECUTION) {
-            inProgress = inferInProgressStep(record);
+            inProgress = inferInProgressStep(record, stepFamily);
         }
 
         if (record.currentState() == WorkflowStatus.COMPLETED) {
@@ -1410,9 +1553,9 @@ public class ChatBotEndpoint {
         }
 
         if (record.currentState() == WorkflowStatus.FAILED || record.currentState() == WorkflowStatus.EXECUTION_TIMED_OUT) {
-            String failedStep = inferFailedStep(record);
+            String failedStep = inferFailedStep(record, stepFamily);
             if (isBlank(failedStep)) {
-                failedStep = inferInProgressStep(record);
+                failedStep = inferInProgressStep(record, stepFamily);
             }
             return renderFailureProgress(steps, failedStep);
         }
@@ -1453,11 +1596,35 @@ public class ChatBotEndpoint {
     }
 
     private static String renderStepStatusMarkdown(WorkflowRecord record) {
+        WorkflowStepFamily stepFamily = detectWorkflowStepFamily(record);
+        return switch (stepFamily) {
+            case DIAGNOSTIC -> renderDiagnosticStepStatusMarkdown(record);
+            case ROLLBACK -> renderRollbackStepStatusMarkdown(record);
+            case PATCHING -> renderPatchingStepStatusMarkdown(record);
+        };
+    }
+
+    private static String renderPatchingStepStatusMarkdown(WorkflowRecord record) {
         List<String> steps = List.of("stop servers", "apply patches", "start servers", "verify patch level");
+        return renderStepStatusMarkdownForFamily(record, steps, WorkflowStepFamily.PATCHING);
+    }
+
+    private static String renderRollbackStepStatusMarkdown(WorkflowRecord record) {
+        List<String> steps = List.of("stop servers", "apply patches", "start servers", "verify patch level");
+        return renderStepStatusMarkdownForFamily(record, steps, WorkflowStepFamily.ROLLBACK);
+    }
+
+    private static String renderDiagnosticStepStatusMarkdown(WorkflowRecord record) {
+        List<String> steps = List.of("run rda diagnostic report", "monitor rda async job", "analyze rda report");
+        return renderStepStatusMarkdownForFamily(record, steps, WorkflowStepFamily.DIAGNOSTIC);
+    }
+
+    private static String renderStepStatusMarkdownForFamily(WorkflowRecord record,
+                                                            List<String> steps,
+                                                            WorkflowStepFamily stepFamily) {
         List<String> completedSteps = orderedCompletedSteps(record, steps);
-        String inProgress = inferInProgressStep(record);
-        String failedStep = inferFailedStep(record);
-        boolean rollbackWorkflow = isRollbackWorkflow(record);
+        String inProgress = inferInProgressStep(record, stepFamily);
+        String failedStep = inferFailedStep(record, stepFamily);
 
         if ((record.currentState() == WorkflowStatus.FAILED
                 || record.currentState() == WorkflowStatus.EXECUTION_TIMED_OUT)
@@ -1492,23 +1659,77 @@ public class ChatBotEndpoint {
             markdown.append("- ")
                     .append(icon)
                     .append(" ")
-                    .append(humanizeStepName(step, rollbackWorkflow))
+                    .append(humanizeStepName(step, stepFamily))
                     .append("\n");
         }
         return markdown.toString().trim();
     }
 
-    private static String humanizeStepName(String step, boolean rollbackWorkflow) {
+    private static String humanizeStepName(String step, WorkflowStepFamily stepFamily) {
         if (isBlank(step)) {
             return "Unknown step";
         }
         return switch (step) {
             case "stop servers" -> "Stop servers";
-            case "apply patches" -> rollbackWorkflow ? "Roll back latest patches" : "Apply patches";
+            case "apply patches" -> stepFamily == WorkflowStepFamily.ROLLBACK
+                    ? "Roll back latest patches"
+                    : "Apply patches";
             case "start servers" -> "Start servers";
-            case "verify patch level" -> rollbackWorkflow ? "Verify removed patches" : "Verify patch level";
+            case "verify patch level" -> stepFamily == WorkflowStepFamily.ROLLBACK
+                    ? "Verify removed patches"
+                    : "Verify patch level";
+            case "run rda diagnostic report" -> "Run RDA diagnostic report";
+            case "monitor rda async job" -> "Monitor RDA async job";
+            case "analyze rda report" -> "Analyze RDA report";
             default -> step;
         };
+    }
+
+    private static WorkflowStepFamily detectWorkflowStepFamily(WorkflowRecord record) {
+        if (record == null) {
+            return WorkflowStepFamily.PATCHING;
+        }
+        if (isDiagnosticWorkflow(record)) {
+            return WorkflowStepFamily.DIAGNOSTIC;
+        }
+        if (isRollbackWorkflow(record)) {
+            return WorkflowStepFamily.ROLLBACK;
+        }
+        return WorkflowStepFamily.PATCHING;
+    }
+
+    private static boolean isDiagnosticWorkflow(WorkflowRecord record) {
+        if (record == null) {
+            return false;
+        }
+        if (record.steps() != null) {
+            boolean diagnosticStepPresent = record.steps().stream()
+                    .filter(Objects::nonNull)
+                    .anyMatch(step -> containsDiagnosticSignal(step.name()) || containsDiagnosticSignal(step.details()));
+            if (diagnosticStepPresent) {
+                return true;
+            }
+        }
+
+        String failureReason = safe(record.failureReason()).toLowerCase();
+        if (containsDiagnosticSignal(failureReason)) {
+            return true;
+        }
+
+        String summary = safe(record.requestSummary()).toLowerCase();
+        return containsDiagnosticSignal(summary);
+    }
+
+    private static boolean containsDiagnosticSignal(String value) {
+        if (isBlank(value)) {
+            return false;
+        }
+        String lower = value.toLowerCase();
+        return lower.contains("rda")
+                || lower.contains("diagnostic report")
+                || lower.contains("run rda diagnostic report")
+                || lower.contains("monitor rda async job")
+                || lower.contains("analyze rda report");
     }
 
     private static boolean isRollbackWorkflow(WorkflowRecord record) {
@@ -1628,6 +1849,18 @@ public class ChatBotEndpoint {
             return null;
         }
         String candidate = rawStepName.trim().toLowerCase();
+        if (candidate.contains("run rda") || (candidate.contains("rda") && candidate.contains("diagnostic")
+                && candidate.contains("report"))) {
+            return "run rda diagnostic report";
+        }
+        if (candidate.contains("monitor rda") || (candidate.contains("monitor") && candidate.contains("rda")
+                && candidate.contains("async"))) {
+            return "monitor rda async job";
+        }
+        if (candidate.contains("analyze rda") || (candidate.contains("analy") && candidate.contains("rda")
+                && candidate.contains("report"))) {
+            return "analyze rda report";
+        }
         if (candidate.contains("monitor-stop-completion") || candidate.contains("initiate-stop-servers")) {
             return "stop servers";
         }
@@ -1667,11 +1900,25 @@ public class ChatBotEndpoint {
         };
     }
 
-    private static String inferFailedStep(WorkflowRecord record) {
+    private static String inferFailedStep(WorkflowRecord record, WorkflowStepFamily stepFamily) {
         if (record == null || isBlank(record.failureReason())) {
             return null;
         }
         String reason = record.failureReason().toLowerCase();
+        if (stepFamily == WorkflowStepFamily.DIAGNOSTIC) {
+            if (reason.contains("run rda") || (reason.contains("rda") && reason.contains("report")
+                    && reason.contains("run"))) {
+                return "run rda diagnostic report";
+            }
+            if (reason.contains("monitor rda") || (reason.contains("monitor") && reason.contains("rda")
+                    && reason.contains("async"))) {
+                return "monitor rda async job";
+            }
+            if (reason.contains("analyze rda") || (reason.contains("analysis") && reason.contains("rda")
+                    && reason.contains("report"))) {
+                return "analyze rda report";
+            }
+        }
         if (reason.contains("stop servers")) {
             return "stop servers";
         }
@@ -1743,7 +1990,10 @@ public class ChatBotEndpoint {
                     summaries.size(),
                     summaries.stream()
                             .limit(10)
-                            .map(item -> "- " + item.workflowId() + " | domain=" + item.domain() + " | state=" + item.currentState())
+                            .map(item -> "- " + item.workflowId()
+                                    + " | domain=" + item.domain()
+                                    + " | state=" + item.currentState()
+                                    + (isBlank(item.workflowSummary()) ? "" : " | summary=" + item.workflowSummary()))
                             .reduce((a, b) -> a + "\n" + b)
                             .orElse(""))
                     .trim();
@@ -1782,6 +2032,45 @@ public class ChatBotEndpoint {
     private static boolean looksLikeWorkflowStatusRequest(String normalizedQuestion) {
         return normalizedQuestion.contains("status") && normalizedQuestion.contains("workflow")
                 || normalizedQuestion.startsWith("status for domain");
+    }
+
+    private static boolean looksLikeRdaWorkflowStartRequest(String normalizedQuestion) {
+        boolean hasDiagnosticSignal = normalizedQuestion.contains("rda")
+                || (normalizedQuestion.contains("diagnostic") && normalizedQuestion.contains("report"));
+        return hasDiagnosticSignal
+                && (normalizedQuestion.contains("run")
+                || normalizedQuestion.contains("start")
+                || normalizedQuestion.contains("create"));
+    }
+
+    private static boolean looksLikeRdaWorkflowAnalysisRequest(String normalizedQuestion) {
+        boolean asksForAnalysis = normalizedQuestion.contains("analysis")
+                || normalizedQuestion.contains("summarize")
+                || normalizedQuestion.contains("summary");
+        boolean mentionsWorkflowReference = normalizedQuestion.contains("workflow")
+                || normalizedQuestion.contains("job");
+        return asksForAnalysis
+                && normalizedQuestion.contains("report")
+                && mentionsWorkflowReference;
+    }
+
+    private static boolean looksLikeRdaReportSummaryIntent(String normalizedQuestion) {
+        if (isBlank(normalizedQuestion)) {
+            return false;
+        }
+        boolean asksForAnalysis = normalizedQuestion.contains("analysis")
+                || normalizedQuestion.contains("summarize")
+                || normalizedQuestion.contains("summary");
+        return asksForAnalysis && normalizedQuestion.contains("report");
+    }
+
+    private static boolean isExplicitWorkflowLookupRequest(String question, String normalizedQuestion) {
+        if (isBlank(normalizedQuestion) || extractWorkflowId(question).isEmpty()) {
+            return false;
+        }
+        return looksLikeRdaWorkflowAnalysisRequest(normalizedQuestion)
+                || looksLikeRdaReportSummaryIntent(normalizedQuestion)
+                || looksLikeWorkflowStatusRequest(normalizedQuestion);
     }
 
     private static boolean looksLikeWorkflowListRequest(String normalizedQuestion) {
@@ -2063,5 +2352,135 @@ public class ChatBotEndpoint {
             return null;
         }
         return url.replaceAll("[.,;!?]+$", "");
+    }
+
+    private AgentResponse handleRdaWorkflowStartRequest(String question,
+                                                        TaskContext context,
+                                                        String summary,
+                                                        String memoryKey) {
+        if (diagnosticWorkflowCoordinator == null) {
+            return null;
+        }
+        String domain = context == null ? null : context.targetDomain();
+        List<String> managedDomains = managedDomainCacheService.getDomains();
+
+        if (isBlank(domain)) {
+            if (managedDomains.size() == 1) {
+                domain = managedDomains.getFirst();
+            } else if (managedDomains.size() > 1) {
+                String choices = String.join(", ", managedDomains);
+                String message = "I can run one diagnostic workflow per domain. "
+                        + "Please choose a single domain and retry, for example: "
+                        + "'Create diagnostic report and summarize it for domain " + managedDomains.getFirst() + "'.\n"
+                        + "Available domains: " + choices;
+                TaskContext responseContext = (context == null ? TaskContext.empty() : context)
+                        .withIntent(firstNonBlank(context == null ? null : context.intent(), DIAGNOSTIC_WORKFLOW_START_INTENT))
+                        .withLastUserRequest(question)
+                        .withPendingFollowUp(DIAGNOSTIC_WORKFLOW_START_INTENT, true, message);
+                appendConversationTurn(memoryKey, question, message);
+                return new AgentResponse(message, summary, responseContext, null);
+            } else {
+                String message = "I can create a diagnostic workflow, but I need the target domain. "
+                        + "Please specify one domain, for example: 'Create diagnostic report and summarize it for domain <domain-name>'.";
+                TaskContext responseContext = (context == null ? TaskContext.empty() : context)
+                        .withIntent(firstNonBlank(context == null ? null : context.intent(), DIAGNOSTIC_WORKFLOW_START_INTENT))
+                        .withLastUserRequest(question)
+                        .withPendingFollowUp(DIAGNOSTIC_WORKFLOW_START_INTENT, true, message);
+                appendConversationTurn(memoryKey, question, message);
+                return new AgentResponse(message, summary, responseContext, null);
+            }
+        }
+
+        WorkflowRecord created = diagnosticWorkflowCoordinator.startRdaDiagnosticWorkflow(
+                domain,
+                context == null ? null : context.conversationId(),
+                context == null ? null : context.taskId(),
+                truncate(question, MAX_CONSTRAINTS_CHARS));
+
+        String message = "Created diagnostic workflow '" + created.workflowId() + "' to run RDA report, "
+                + "monitor async completion every 1 minute, and analyze the report.";
+        ResponseMetadata metadata = metadataWithActions(List.of(
+                new ResponseAction(
+                        "workflow-status",
+                        "Check status",
+                        "Check status for workflow " + created.workflowId(),
+                        created.workflowId())));
+
+        TaskContext responseContext = (context == null ? TaskContext.empty() : context)
+                .withIntent(firstNonBlank(context == null ? null : context.intent(), DIAGNOSTIC_WORKFLOW_START_INTENT))
+                .withTargetDomain(domain)
+                .withLastReferencedWorkflowId(created.workflowId())
+                .withActiveWorkflowIds(List.of(created.workflowId()))
+                .withLastUserRequest(question);
+        appendConversationTurn(memoryKey, question, message);
+        return new AgentResponse(message, summary, responseContext, metadata);
+    }
+
+    private AgentResponse handleRdaWorkflowAnalysisRequest(String question,
+                                                           TaskContext context,
+                                                           String summary,
+                                                           String memoryKey) {
+        if (diagnosticWorkflowCoordinator == null) {
+            return null;
+        }
+        Optional<String> workflowId = extractWorkflowId(question);
+        String resolved = workflowId.orElse(context == null ? null : context.lastReferencedWorkflowId());
+        if (isBlank(resolved)) {
+            String msg = "Please provide workflow id. Example: Show me the analysis of the report for <workflow id>.";
+            appendConversationTurn(memoryKey, question, msg);
+            return new AgentResponse(msg, summary, context == null ? TaskContext.empty() : context, null);
+        }
+        WorkflowRecord workflow = diagnosticWorkflowCoordinator.getByWorkflowId(resolved).orElse(null);
+        if (workflow == null) {
+            String msg = "I couldn't find workflow '" + resolved + "'.";
+            appendConversationTurn(memoryKey, question, msg);
+            return new AgentResponse(msg, summary, context == null ? TaskContext.empty() : context, null);
+        }
+        if (isBlank(workflow.reportAnalysis())) {
+            String msg = "Workflow '" + workflow.workflowId() + "' has no stored report analysis yet."
+                    + " Current state is '" + workflow.currentState() + "'.";
+            appendConversationTurn(memoryKey, question, msg);
+            return new AgentResponse(msg, summary,
+                    (context == null ? TaskContext.empty() : context).withLastReferencedWorkflowId(workflow.workflowId()),
+                    null);
+        }
+
+        String message = workflow.reportAnalysis();
+        TaskContext responseContext = (context == null ? TaskContext.empty() : context)
+                .withLastReferencedWorkflowId(workflow.workflowId())
+                .withLastUserRequest(question)
+                .withMemorySummary(firstNonBlank(summary, workflow.workflowSummary()));
+        appendConversationTurn(memoryKey, question, message);
+        return new AgentResponse(message, firstNonBlank(summary, workflow.workflowSummary()), responseContext, null);
+    }
+
+    private static String inferInProgressStep(WorkflowRecord record, WorkflowStepFamily stepFamily) {
+        if (record == null || record.currentState() == null) {
+            return null;
+        }
+
+        if (record.steps() != null) {
+            for (WorkflowStepRecord step : record.steps()) {
+                if (step != null && step.state() == WorkflowStepStatus.IN_EXECUTION) {
+                    String normalized = normalizeStepName(step.name());
+                    if (!isBlank(normalized)) {
+                        return normalized;
+                    }
+                }
+            }
+        }
+
+        return switch (record.currentState()) {
+            case IN_EXECUTION, APPROVED, QUEUED -> stepFamily == WorkflowStepFamily.DIAGNOSTIC
+                    ? "run rda diagnostic report"
+                    : "stop servers";
+            default -> null;
+        };
+    }
+
+    private enum WorkflowStepFamily {
+        PATCHING,
+        ROLLBACK,
+        DIAGNOSTIC
     }
 }

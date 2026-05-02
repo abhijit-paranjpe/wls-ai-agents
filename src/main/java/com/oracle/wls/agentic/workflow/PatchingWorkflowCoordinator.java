@@ -175,7 +175,10 @@ public class PatchingWorkflowCoordinator {
                 Instant.now(),
                 channel,
                 current.failureReason(),
-                current.steps());
+                current.steps(),
+                current.workflowSummary(),
+                current.reportUrl(),
+                current.reportAnalysis());
 
         return Optional.of(workflowStateStore.update(updated));
     }
@@ -239,7 +242,10 @@ public class PatchingWorkflowCoordinator {
                 approvalDecision == null ? null : now,
                 approvalDecision == null ? null : approvalChannel,
                 null,
-                List.of());
+                List.of(),
+                null,
+                null,
+                null);
         return workflowStateStore.create(created);
     }
 
@@ -390,7 +396,10 @@ public class PatchingWorkflowCoordinator {
                 current.approvalDecisionAt(),
                 current.approvalChannel(),
                 failureReason,
-                current.steps());
+                current.steps(),
+                current.workflowSummary(),
+                current.reportUrl(),
+                current.reportAnalysis());
     }
 
     private static String detectCompletionFailureReason(WorkflowRecord record) {

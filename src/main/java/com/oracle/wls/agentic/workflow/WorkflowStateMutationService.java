@@ -141,7 +141,10 @@ public class WorkflowStateMutationService {
                 current.approvalDecisionAt(),
                 current.approvalChannel(),
                 failWorkflow ? details : current.failureReason(),
-                List.copyOf(updated));
+                List.copyOf(updated),
+                current.workflowSummary(),
+                current.reportUrl(),
+                current.reportAnalysis());
 
         LOGGER.log(System.Logger.Level.INFO,
                 "Persisting workflow mutation: workflowId={0}, step={1}, stepStatus={2}, workflowState={3}",
@@ -149,6 +152,38 @@ public class WorkflowStateMutationService {
                 stepName,
                 stepStatus,
                 mutated.currentState());
+        return workflowStateStore.update(mutated);
+    }
+
+    public WorkflowRecord updateWorkflowCompletionDetails(String workflowId,
+                                                          WorkflowStatus workflowStatus,
+                                                          String workflowSummary,
+                                                          String reportUrl,
+                                                          String reportAnalysis,
+                                                          String failureReason) {
+        if (workflowId == null || workflowId.isBlank()) {
+            throw new IllegalArgumentException("workflowId must not be blank");
+        }
+        WorkflowRecord current = workflowStateStore.getByWorkflowId(workflowId)
+                .orElseThrow(() -> new IllegalArgumentException("Workflow not found: " + workflowId));
+        Instant now = Instant.now();
+        WorkflowRecord mutated = new WorkflowRecord(
+                current.workflowId(),
+                current.domain(),
+                workflowStatus == null ? current.currentState() : workflowStatus,
+                current.createdAt(),
+                now,
+                current.conversationId(),
+                current.taskId(),
+                current.requestSummary(),
+                current.approvalDecision(),
+                current.approvalDecisionAt(),
+                current.approvalChannel(),
+                failureReason == null ? current.failureReason() : failureReason,
+                current.steps() == null ? List.of() : List.copyOf(current.steps()),
+                workflowSummary == null ? current.workflowSummary() : workflowSummary,
+                reportUrl == null ? current.reportUrl() : reportUrl,
+                reportAnalysis == null ? current.reportAnalysis() : reportAnalysis);
         return workflowStateStore.update(mutated);
     }
 

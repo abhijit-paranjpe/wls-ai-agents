@@ -19,7 +19,10 @@ public record WorkflowRecord(
         Instant approvalDecisionAt,
         WorkflowChannel approvalChannel,
         String failureReason,
-        List<WorkflowStepRecord> steps) {
+        List<WorkflowStepRecord> steps,
+        String workflowSummary,
+        String reportUrl,
+        String reportAnalysis) {
 
     public WorkflowSummary toSummary() {
         return new WorkflowSummary(
@@ -30,6 +33,7 @@ public record WorkflowRecord(
                 updatedAt,
                 conversationId,
                 taskId,
-                requestSummary);
+                requestSummary,
+                workflowSummary);
     }
 }

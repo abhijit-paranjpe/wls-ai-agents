@@ -13,5 +13,6 @@ public record WorkflowSummary(
         Instant updatedAt,
         String conversationId,
         String taskId,
-        String requestSummary) {
+        String requestSummary,
+        String workflowSummary) {
 }

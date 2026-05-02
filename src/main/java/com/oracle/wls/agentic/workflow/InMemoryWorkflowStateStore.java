@@ -125,7 +125,10 @@ public class InMemoryWorkflowStateStore implements WorkflowStateStore {
                 workflowRecord.approvalDecisionAt(),
                 workflowRecord.approvalChannel(),
                 workflowRecord.failureReason(),
-                workflowRecord.steps() == null ? List.of() : List.copyOf(workflowRecord.steps()));
+                workflowRecord.steps() == null ? List.of() : List.copyOf(workflowRecord.steps()),
+                workflowRecord.workflowSummary(),
+                workflowRecord.reportUrl(),
+                workflowRecord.reportAnalysis());
     }
 
     private static String normalizeDomain(String domain) {

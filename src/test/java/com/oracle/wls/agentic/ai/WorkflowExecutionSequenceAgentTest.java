@@ -113,4 +113,31 @@ class WorkflowExecutionSequenceAgentTest {
         verify(patchingAgent, never()).analyzeRequest(anyString());
         assertTrue(response.contains("\"status\":\"failed\""));
     }
+
+    @Test
+    void monitorStepFailsFastWhenPriorStepLacksTrackingContext() {
+        DomainRuntimeAgent domainRuntimeAgent = mock(DomainRuntimeAgent.class);
+        MonitoringAgent monitoringAgent = mock(MonitoringAgent.class);
+        PatchingAgent patchingAgent = mock(PatchingAgent.class);
+        WorkflowStateMutationService workflowStateMutationService = mock(WorkflowStateMutationService.class);
+
+        when(domainRuntimeAgent.analyzeRequest(anyString()))
+                .thenReturn("""
+                        {"status":"completed","operation":"stop-servers","domain":"payments-prod","message":"stop initiated"}
+                        """);
+
+        WorkflowExecutionSequenceAgent agent = new WorkflowExecutionSequenceAgent(
+                domainRuntimeAgent,
+                monitoringAgent,
+                patchingAgent,
+                workflowStateMutationService);
+
+        String response = agent.run("wf-3", "payments-prod", "execute", "start", APPLY_PLAN);
+
+        verify(monitoringAgent, never()).analyzeRequest(anyString());
+        verify(patchingAgent, never()).analyzeRequest(anyString());
+        verify(workflowStateMutationService).markStepFailedAndFailWorkflow(eq("wf-3"), eq("monitor-stop-completion"), anyString());
+        assertTrue(response.contains("\"status\":\"failed\""));
+        assertTrue(response.contains("Missing required async tracking context"));
+    }
 }
